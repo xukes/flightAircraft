@@ -1,24 +1,30 @@
-# 简易打飞机小游戏
+# Flight Aircraft (Refactored)
 
-这是一个基于抖音小游戏环境开发的简易打飞机游戏。
+This project has been refactored to use React, TypeScript, and Phaser.
 
-## 游戏玩法
+## Setup
 
-1. **操作方式**：手指（或鼠标在模拟器中）按住屏幕并拖动，控制蓝色方块（玩家飞机）移动。
-2. **攻击**：飞机自动发射红色子弹。
-3. **目标**：击落从上方掉落的绿色方块（敌机），每击落一个得 10 分。
-4. **失败条件**：如果玩家飞机碰到敌机，游戏结束。
-5. **重新开始**：游戏结束后，点击屏幕任意位置即可重新开始。
+1.  Install dependencies:
+    ```bash
+    npm install
+    ```
 
-## 开发说明
+2.  Start the development server:
+    ```bash
+    npm run dev
+    ```
 
-- **入口文件**：`game.js`
-- **渲染引擎**：Canvas 2D API
-- **逻辑循环**：`requestAnimationFrame`
+## Structure
 
-## 主要逻辑
+-   `src/App.tsx`: React component that initializes the Phaser game.
+-   `src/game/scenes/MainScene.ts`: The main game scene containing the game logic (ported from the original `game.js`).
 
-- `loop()`: 游戏主循环，负责调度更新和绘制。
-- `update()`: 更新所有游戏对象的位置，处理碰撞检测。
-- `draw()`: 渲染游戏画面。
-- `tt.onTouchMove`: 监听触摸移动事件控制飞机。
+## Controls
+
+-   **Move**: Mouse / Touch
+-   **Shoot**: Automatic
+-   **Game Over**: Click to restart
+
+## Legacy Code
+
+The original game code has been moved to the `legacy/` directory.
