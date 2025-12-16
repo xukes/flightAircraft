@@ -595,10 +595,10 @@ export default class MainScene extends Phaser.Scene {
 
     hitPlayer(_player: any, enemy: any) {
         if (this.isGameOver || !enemy.active) return;
-        
+
         this.enemies.killAndHide(enemy);
         if (enemy.body) enemy.body.enable = false;
-        
+
         // @ts-ignore
         if (enemy.hpText) {
             // @ts-ignore
@@ -606,25 +606,37 @@ export default class MainScene extends Phaser.Scene {
             // @ts-ignore
             enemy.hpText = null;
         }
-        
-        this.takeDamage(20);
+
+        this.takeDamage(20, 'collision'); // Collision with enemy
     }
 
     hitPlayerBullet(_player: any, bullet: any) {
         if (this.isGameOver || !bullet.active) return;
-        
+
         this.enemyBullets.killAndHide(bullet);
         if (bullet.body) bullet.body.enable = false;
-        
-        this.takeDamage(10);
+
+        this.takeDamage(10, 'bullet'); // Hit by enemy bullet
     }
 
-    takeDamage(amount: number) {
+    takeDamage(amount: number, damageType: 'collision' | 'bullet' | 'laser' = 'bullet') {
         this.playerHp -= amount;
         this.updateHpBar();
 
-        // Play player hit sound with random pitch
-        this.audioManager.playWithPitchVariation('hit', 0.8, 1.1);
+        // Play different hit sounds based on damage type
+        if (damageType === 'collision') {
+            // Enemy collision - deeper, more impactful sound
+            this.audioManager.playWithPitchVariation('playerHit', 0.6, 0.9);
+        } else if (damageType === 'bullet') {
+            // Bullet hit - standard player hit sound
+            this.audioManager.playWithPitchVariation('playerHit', 0.8, 1.1);
+        } else if (damageType === 'laser') {
+            // Laser damage - higher pitch, smaller sound
+            this.audioManager.playSound('playerHit', {
+                rate: Phaser.Math.FloatBetween(1.2, 1.5),
+                volume: 0.7
+            });
+        }
 
         // Visual feedback
         this.player.setTint(0xff0000);

@@ -35,7 +35,8 @@ The game now includes a comprehensive audio system:
 ### Sound Effects
 - Player shooting (with pitch variation)
 - Enemy shooting
-- Hit effects
+- Hit effects (enemy damage)
+- Player hit effects (with different sounds for collision/bullet/laser)
 - Explosions
 - Powerup collection
 - Laser weapon
@@ -54,7 +55,8 @@ To enable audio, place sound files in `assets/sounds/`:
 - `shoot.wav` - Player shooting
 - `laser.wav` - Laser weapon
 - `enemy_shoot.wav` - Enemy shooting
-- `hit.wav` - Hit effects
+- `hit.wav` - Enemy hit effects
+- `playerHit.wav` - Player hit effects
 - `explosion.wav` - Explosions
 - `powerup.wav` - Powerup collection
 - `lightning.wav` - Lightning attack

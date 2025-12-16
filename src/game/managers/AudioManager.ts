@@ -14,7 +14,7 @@ export default class AudioManager {
     preload() {
         // 检查音效文件是否存在，如果不存在则跳过加载
         const soundFiles = [
-            'shoot', 'explosion', 'hit', 'powerup',
+            'shoot', 'explosion', 'hit', 'playerHit', 'powerup',
             'laser', 'lightning', 'enemyShoot', 'gameOver'
         ];
 
@@ -37,7 +37,7 @@ export default class AudioManager {
     create() {
         // 创建所有音效（如果文件存在的话）
         const soundKeys = [
-            'shoot', 'explosion', 'hit', 'powerup',
+            'shoot', 'explosion', 'hit', 'playerHit', 'powerup',
             'laser', 'lightning', 'enemyShoot', 'gameOver'
         ];
 
