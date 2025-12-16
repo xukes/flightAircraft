@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import AudioManager from '../managers/AudioManager';
 
 export default class MainScene extends Phaser.Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
@@ -25,20 +26,26 @@ export default class MainScene extends Phaser.Scene {
     private keyE!: Phaser.Input.Keyboard.Key;
     private keyR!: Phaser.Input.Keyboard.Key;
     private keySpace!: Phaser.Input.Keyboard.Key;
+    private keyM!: Phaser.Input.Keyboard.Key;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     
     private hpBar!: Phaser.GameObjects.Graphics;
     
-    private playerEnergy: number = 100; // Start with full energy for testing
+    private playerEnergy: number = 0; // Start with full energy for testing
     private maxEnergy: number = 100;
     private energyBar!: Phaser.GameObjects.Graphics;
     private energyText!: Phaser.GameObjects.Text;
     private laser!: Phaser.Physics.Arcade.Sprite;
+    private laserGraphics!: Phaser.GameObjects.Graphics;
     private isLaserActive: boolean = false;
 
     private lightningGroup!: Phaser.GameObjects.Group;
     private isLightningActive: boolean = false;
     private isWaveFireActive: boolean = false;
+
+    private audioManager!: AudioManager;
+    private laserSound!: Phaser.Sound.BaseSound | null;
+    private laserLoopSound!: Phaser.Sound.BaseSound | null;
 
     constructor() {
         super('MainScene');
@@ -47,6 +54,10 @@ export default class MainScene extends Phaser.Scene {
     preload() {
         this.load.image('background', 'assets/background.png');
         this.load.image('spritesheet', 'assets/spritesheet.png');
+
+        // Initialize and preload audio
+        this.audioManager = new AudioManager(this);
+        this.audioManager.preload();
     }
 
     create() {
@@ -101,11 +112,15 @@ export default class MainScene extends Phaser.Scene {
             this.keyE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
             this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
             this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+            this.keyM = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
         }
 
         // UI
         this.scoreText = this.add.text(10, 10, 'Score: 0', { fontSize: '20px', color: '#fff' });
         this.fpsText = this.add.text(this.scale.width - 10, 10, 'FPS: 0', { fontSize: '16px', color: '#00ff00' }).setOrigin(1, 0);
+
+        // Audio control hint
+        this.add.text(this.scale.width - 10, 30, 'M: Mute/Unmute', { fontSize: '12px', color: '#ffff00' }).setOrigin(1, 0).setDepth(100);
         
         // HP Bar
         this.hpBar = this.add.graphics();
@@ -114,7 +129,7 @@ export default class MainScene extends Phaser.Scene {
 
         // Energy Bar
         this.energyBar = this.add.graphics();
-        this.energyText = this.add.text(10, 70, 'MP: 0/100', { fontSize: '16px', color: '#00ffff' });
+        this.energyText = this.add.text(10, 70, 'MP: 0/100', { fontSize: '16px', color: '#0088ff' });
         this.updateEnergyBar();
         
         // Inventory at bottom
@@ -131,9 +146,12 @@ export default class MainScene extends Phaser.Scene {
         // Laser
         this.laser = this.physics.add.sprite(0, 0, 'spritesheet', 'laser');
         this.laser.setOrigin(0.5, 1); // Bottom Center
-        this.laser.setVisible(false);
+        this.laser.setVisible(false); // We use graphics for the laser beam
         this.laser.setActive(false);
-        this.laser.setDepth(9); // Behind player (player is 10) to look like it comes from under/center
+        // this.laser.setDepth(9); // Not needed as it is invisible
+        
+        this.laserGraphics = this.add.graphics();
+        this.laserGraphics.setDepth(9);
         this.laser.setTint(0x00ffff);
         
         // Timers
@@ -156,7 +174,7 @@ export default class MainScene extends Phaser.Scene {
         this.physics.add.overlap(this.player, this.enemies, this.hitPlayer, undefined, this);
         this.physics.add.overlap(this.player, this.enemyBullets, this.hitPlayerBullet, undefined, this);
         this.physics.add.overlap(this.player, this.powerups, this.collectPowerup, undefined, this);
-        this.physics.add.overlap(this.laser, this.enemies, this.hitEnemyWithLaser, undefined, this);
+        // this.physics.add.overlap(this.laser, this.enemies, this.hitEnemyWithLaser, undefined, this); // Moved to postUpdate
         
         // Lightning VFX Group
         this.lightningGroup = this.add.group({
@@ -167,6 +185,24 @@ export default class MainScene extends Phaser.Scene {
 
         // Hook into postupdate to sync laser position perfectly with player
         this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.handlePostUpdate, this);
+
+        // Initialize audio system
+        this.audioManager.create();
+        this.audioManager.playBGM();
+
+        // Initialize laser sounds
+        try {
+            this.laserSound = this.sound.add('laser', { volume: 0.5 });
+            this.laserLoopSound = this.sound.add('laser', {
+                volume: 0.3,
+                loop: true,
+                rate: 0.8 // Slightly lower pitch for continuous effect
+            });
+        } catch (error) {
+            console.warn('Laser sounds could not be loaded, skipping...');
+            this.laserSound = null;
+            this.laserLoopSound = null;
+        }
     }
 
     handlePostUpdate() {
@@ -179,17 +215,32 @@ export default class MainScene extends Phaser.Scene {
             const topY = -50;
             const height = bottomY - topY;
             
-            // Sync Sprite Position
-            // Origin is (0.5, 1), so we set position to (x, bottomY)
-            this.laser.setPosition(this.player.x, bottomY);
-            this.laser.setDisplaySize(16, height);
+            // Draw Laser
+            this.laserGraphics.clear();
+            
+            // Outer beam (Cyan)
+            const width = 8;
+            this.laserGraphics.fillStyle(0x00ffff, 0.6 + 0.2 * Math.sin(this.time.now / 50));
+            this.laserGraphics.fillRect(this.player.x - width / 2, topY, width, height);
+            
+            // Inner core (White)
+            const coreWidth = 4;
+            this.laserGraphics.fillStyle(0xffffff, 1);
+            this.laserGraphics.fillRect(this.player.x - coreWidth / 2, topY, coreWidth, height);
             
             // Sync Body Position
             if (this.laser.body) {
                 // Body is top-left based
-                this.laser.body.reset(this.player.x - 8, topY);
-                this.laser.body.setSize(16, height);
+                // Make hitbox wider (16px) than visual (8px) for better feel
+                const hitWidth = 16;
+                this.laser.body.reset(this.player.x - hitWidth / 2, topY);
+                this.laser.body.setSize(hitWidth, height);
+                
+                // Manual collision check to ensure sync with visual position
+                this.physics.overlap(this.laser, this.enemies, this.hitEnemyWithLaser, undefined, this);
             }
+        } else {
+            this.laserGraphics.clear();
         }
     }
 
@@ -221,19 +272,29 @@ export default class MainScene extends Phaser.Scene {
 
         // Laser Logic
         if (this.keySpace.isDown && this.playerEnergy > 0) {
+            if (!this.isLaserActive) {
+                // Play laser activation sound
+                if (this.laserSound) {
+                    this.laserSound.play();
+                }
+                // Start continuous laser sound
+                if (this.laserLoopSound) {
+                    this.laserLoopSound.play();
+                }
+            }
             this.isLaserActive = true;
-            this.laser.setVisible(true);
+            // this.laser.setVisible(true); // Handled by graphics
             this.laser.setActive(true);
             if (this.laser.body) this.laser.body.enable = true;
             
             // Position update is now handled in postUpdate to prevent lag
             
-            // Pulse effect
-            this.laser.setAlpha(0.8 + 0.2 * Math.sin(this.time.now / 50));
+            // Pulse effect (handled in graphics drawing)
+            // this.laser.setAlpha(0.8 + 0.2 * Math.sin(this.time.now / 50));
 
             // Consume Energy (5% per second)
             // 5 units per 1000ms = 0.005 per ms
-            this.playerEnergy -= 0.005 * delta;
+            this.playerEnergy -= 0.02 * delta;
             
             if (this.playerEnergy <= 0) {
                 this.playerEnergy = 0;
@@ -241,14 +302,21 @@ export default class MainScene extends Phaser.Scene {
                 this.laser.setVisible(false);
                 this.laser.setActive(false);
                 if (this.laser.body) this.laser.body.enable = false;
+
+                // Stop laser sounds when energy depletes
+                this.stopLaserSounds();
             }
             this.updateEnergyBar();
         } else {
             if (this.isLaserActive) {
                 this.isLaserActive = false;
-                this.laser.setVisible(false);
+                // this.laser.setVisible(false);
                 this.laser.setActive(false);
                 if (this.laser.body) this.laser.body.enable = false;
+                this.laserGraphics.clear();
+
+                // Stop laser sounds
+                this.stopLaserSounds();
             }
         }
         
@@ -292,6 +360,10 @@ export default class MainScene extends Phaser.Scene {
             if (Phaser.Input.Keyboard.JustDown(this.keyQ)) this.usePowerup('powerup_upgrade');
             if (Phaser.Input.Keyboard.JustDown(this.keyE)) this.usePowerup('powerup_lightning');
             if (Phaser.Input.Keyboard.JustDown(this.keyR)) this.usePowerup('powerup_strengthen');
+            if (Phaser.Input.Keyboard.JustDown(this.keyM)) {
+                const isMuted = this.audioManager.toggleMute();
+                this.showMuteStatus(isMuted);
+            }
         }
 
         // Cleanup off-screen entities
@@ -308,7 +380,7 @@ export default class MainScene extends Phaser.Scene {
                 // Update HP Text
                 if (e.hpText) {
                     e.hpText.setPosition(e.x, e.y - 30);
-                    e.hpText.setText(e.hp.toString());
+                    e.hpText.setText(parseFloat(e.hp.toFixed(1)).toString());
                 }
 
                 // Enemy shooting
@@ -353,11 +425,15 @@ export default class MainScene extends Phaser.Scene {
             }
             bullet.setTexture('spritesheet', 'enemyBullet');
             bullet.setVelocityY(300);
+
+            // Play enemy shoot sound with random pitch variation
+            this.audioManager.playWithPitchVariation('enemyShoot', 0.8, 1.2);
         }
     }
 
     fireBullet() {
         if (this.isGameOver) return;
+        if (this.isLaserActive) return;
 
         if (this.isWaveFireActive) {
             // Wave Fire: 3 bullets
@@ -372,13 +448,15 @@ export default class MainScene extends Phaser.Scene {
                         bullet.body.reset(this.player.x, this.player.y - 30);
                     }
                     bullet.setTexture('spritesheet', 'bullet');
-                    
+
                     // Calculate velocity based on angle
                     const vec = new Phaser.Math.Vector2(0, -400);
                     vec.rotate(Phaser.Math.DegToRad(angle));
                     bullet.setVelocity(vec.x, vec.y);
                 }
             });
+            // Play wave fire sound with slight variation
+            this.audioManager.playWithPitchVariation('shoot', 0.9, 1.1);
         } else {
             // Normal Fire
             const bullet = this.bullets.get(this.player.x, this.player.y - 30);
@@ -392,6 +470,8 @@ export default class MainScene extends Phaser.Scene {
                 bullet.setTexture('spritesheet', 'bullet');
                 bullet.setVelocity(0, -400);
             }
+            // Play normal shoot sound
+            this.audioManager.playSound('shoot');
         }
     }
 
@@ -432,10 +512,13 @@ export default class MainScene extends Phaser.Scene {
 
         this.bullets.killAndHide(bullet);
         if (bullet.body) bullet.body.enable = false;
-        
+
         // @ts-ignore
         enemy.hp--;
-        
+
+        // Play hit sound
+        this.audioManager.playSound('hit');
+
         // Visual feedback for hit
         enemy.setTint(0xff0000);
         this.time.delayedCall(100, () => {
@@ -443,7 +526,7 @@ export default class MainScene extends Phaser.Scene {
         });
 
         // @ts-ignore
-        if (enemy.hpText) enemy.hpText.setText(enemy.hp.toString());
+        if (enemy.hpText) enemy.hpText.setText(parseFloat(enemy.hp.toFixed(1)).toString());
 
         // @ts-ignore
         if (enemy.hp <= 0) {
@@ -453,18 +536,24 @@ export default class MainScene extends Phaser.Scene {
 
     hitEnemyWithLaser(_laser: any, enemy: any) {
         if (!enemy.active) return;
-        
+
         // Laser damage
         // @ts-ignore
         enemy.hp -= 0.2;
-        
+
+        // Play laser hit sound with lower volume
+        this.audioManager.playSound('hit', {
+            volume: 0.3,
+            rate: 1.5 // Higher pitch for laser hit
+        });
+
         enemy.setTint(0x00ffff);
         this.time.delayedCall(50, () => {
             if (enemy.active) enemy.clearTint();
         });
 
         // @ts-ignore
-        if (enemy.hpText) enemy.hpText.setText(Math.ceil(enemy.hp).toString());
+        if (enemy.hpText) enemy.hpText.setText(parseFloat(enemy.hp.toFixed(1)).toString());
 
         // @ts-ignore
         if (enemy.hp <= 0) {
@@ -473,6 +562,9 @@ export default class MainScene extends Phaser.Scene {
     }
 
     destroyEnemy(enemy: any) {
+        // Play explosion sound
+        this.audioManager.playSound('explosion');
+
         // Play explosion
         const explosion = this.add.sprite(enemy.x, enemy.y, 'spritesheet', 'explosion_0');
         explosion.play('explode');
@@ -491,11 +583,11 @@ export default class MainScene extends Phaser.Scene {
         }
         this.score += 10;
         this.scoreText.setText('Score: ' + this.score);
-        
+
         // Collect Energy (10%)
         this.playerEnergy = Math.min(this.playerEnergy + 10, this.maxEnergy);
         this.updateEnergyBar();
-        
+
         if (Math.random() > 0.8) { // Increased drop rate for testing
             this.spawnPowerup(enemy.x, enemy.y);
         }
@@ -530,7 +622,10 @@ export default class MainScene extends Phaser.Scene {
     takeDamage(amount: number) {
         this.playerHp -= amount;
         this.updateHpBar();
-        
+
+        // Play player hit sound with random pitch
+        this.audioManager.playWithPitchVariation('hit', 0.8, 1.1);
+
         // Visual feedback
         this.player.setTint(0xff0000);
         this.time.delayedCall(100, () => {
@@ -554,8 +649,7 @@ export default class MainScene extends Phaser.Scene {
         // Health
         const percent = Phaser.Math.Clamp(this.playerHp / this.maxHp, 0, 1);
         
-        if (percent < 0.3) this.hpBar.fillStyle(0xff0000);
-        else this.hpBar.fillStyle(0x00ff00);
+        this.hpBar.fillStyle(0xff0000);
         
         this.hpBar.fillRect(10, 40, 200 * percent, 20);
         
@@ -575,7 +669,7 @@ export default class MainScene extends Phaser.Scene {
         // Energy
         const percent = Phaser.Math.Clamp(this.playerEnergy / this.maxEnergy, 0, 1);
         
-        this.energyBar.fillStyle(0x00ffff);
+        this.energyBar.fillStyle(0x0088ff);
         this.energyBar.fillRect(10, 70, 200 * percent, 20);
         
         // Text update
@@ -603,10 +697,13 @@ export default class MainScene extends Phaser.Scene {
 
     collectPowerup(_player: any, powerup: any) {
         if (!powerup.active) return;
-        
+
         // @ts-ignore
         const type = powerup.powerType;
-        
+
+        // Play powerup collection sound
+        this.audioManager.playSound('powerup');
+
         // Always collect (remove from screen)
         this.powerups.killAndHide(powerup);
         if (powerup.body) powerup.body.enable = false;
@@ -671,33 +768,40 @@ export default class MainScene extends Phaser.Scene {
     
     activateLightningMode() {
         this.isLightningActive = true;
-        
+
+        // Play lightning activation sound
+        this.audioManager.playSound('lightning');
+
         // Flash screen
         this.cameras.main.flash(500, 255, 255, 200);
-        
+
         // Duration: 3 seconds
         this.time.delayedCall(3000, () => {
             this.isLightningActive = false;
             this.lightningGroup.clear(true, true); // Clear all bolts
         });
-        
+
         // Damage ticks: 0s, 1s, 2s (3 ticks)
         // Tick 1 (Immediate)
         this.damageAllEnemies(1);
-        
+
         // Tick 2
         this.time.delayedCall(1000, () => {
             if (this.isLightningActive) {
                 this.damageAllEnemies(1);
                 this.cameras.main.shake(100, 0.01);
+                // Play additional lightning sound for effect
+                this.audioManager.playWithPitchVariation('lightning', 0.8, 1.0);
             }
         });
-        
+
         // Tick 3
         this.time.delayedCall(2000, () => {
             if (this.isLightningActive) {
                 this.damageAllEnemies(1);
                 this.cameras.main.shake(100, 0.01);
+                // Play final lightning sound with lower pitch
+                this.audioManager.playWithPitchVariation('lightning', 0.6, 0.8);
             }
         });
     }
@@ -706,7 +810,7 @@ export default class MainScene extends Phaser.Scene {
         this.enemies.children.each((e: any) => {
             if (e.active) {
                 e.hp -= damage;
-                if (e.hpText) e.hpText.setText(e.hp.toString());
+                if (e.hpText) e.hpText.setText(parseFloat(e.hp.toFixed(1)).toString());
                 
                 if (e.hp <= 0) {
                     // Play explosion
@@ -730,19 +834,61 @@ export default class MainScene extends Phaser.Scene {
         this.scoreText.setText('Score: ' + this.score);
     }
 
+    stopLaserSounds() {
+        if (this.laserLoopSound && this.laserLoopSound.isPlaying) {
+            this.laserLoopSound.stop();
+        }
+        if (this.laserSound && this.laserSound.isPlaying) {
+            this.laserSound.stop();
+        }
+    }
+
+    showMuteStatus(isMuted: boolean) {
+        const status = isMuted ? '🔇 MUTED' : '🔊 SOUND ON';
+        const color = isMuted ? '#ff6666' : '#66ff66';
+
+        const text = this.add.text(this.scale.width / 2, 100, status, {
+            fontSize: '24px',
+            color: color,
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0.5).setDepth(200);
+
+        this.tweens.add({
+            targets: text,
+            alpha: 0,
+            y: text.y - 30,
+            duration: 1500,
+            onComplete: () => text.destroy()
+        });
+    }
+
     gameOver() {
         this.isGameOver = true;
         this.physics.pause();
+
+        // Stop background music
+        this.audioManager.stopBGM();
+
+        // Stop all laser sounds
+        this.stopLaserSounds();
+
+        // Play game over sound
+        this.audioManager.playSound('gameOver');
+
+        // Ensure laser is properly deactivated
+        this.isLaserActive = false;
+
         this.add.text(this.scale.width / 2, this.scale.height / 2, 'GAME OVER', {
             fontSize: '40px',
             color: '#ff0000'
         }).setOrigin(0.5);
-        
+
         this.add.text(this.scale.width / 2, this.scale.height / 2 + 50, '请按空格重新开始', {
             fontSize: '20px',
             color: '#ffffff'
         }).setOrigin(0.5);
-        
+
         if (this.input.keyboard) {
             this.input.keyboard.once('keydown-SPACE', () => {
                 this.scene.restart();
@@ -750,9 +896,16 @@ export default class MainScene extends Phaser.Scene {
         }
     }
 
+    // Add cleanup method to handle scene shutdown
+    shutdown() {
+        // Stop all sounds when scene is destroyed
+        this.stopLaserSounds();
+        this.audioManager.stopAll();
+    }
+
     createAnimations() {
         const sheet = this.textures.get('spritesheet');
-        
+
         // Player: (0, 0) 64x64
         if (!sheet.has('player')) sheet.add('player', 0, 0, 0, 64, 64);
         
