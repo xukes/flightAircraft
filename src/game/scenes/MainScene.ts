@@ -24,10 +24,18 @@ export default class MainScene extends Phaser.Scene {
     private keyQ!: Phaser.Input.Keyboard.Key;
     private keyE!: Phaser.Input.Keyboard.Key;
     private keyR!: Phaser.Input.Keyboard.Key;
+    private keySpace!: Phaser.Input.Keyboard.Key;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     
     private hpBar!: Phaser.GameObjects.Graphics;
     
+    private playerEnergy: number = 100; // Start with full energy for testing
+    private maxEnergy: number = 100;
+    private energyBar!: Phaser.GameObjects.Graphics;
+    private energyText!: Phaser.GameObjects.Text;
+    private laser!: Phaser.Physics.Arcade.Sprite;
+    private isLaserActive: boolean = false;
+
     private lightningGroup!: Phaser.GameObjects.Group;
     private isLightningActive: boolean = false;
     private isWaveFireActive: boolean = false;
@@ -92,6 +100,7 @@ export default class MainScene extends Phaser.Scene {
             this.keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
             this.keyE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
             this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+            this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         }
 
         // UI
@@ -102,6 +111,11 @@ export default class MainScene extends Phaser.Scene {
         this.hpBar = this.add.graphics();
         this.hpText = this.add.text(10, 40, 'HP: 100/100', { fontSize: '16px', color: '#fff' });
         this.updateHpBar();
+
+        // Energy Bar
+        this.energyBar = this.add.graphics();
+        this.energyText = this.add.text(10, 70, 'MP: 0/100', { fontSize: '16px', color: '#00ffff' });
+        this.updateEnergyBar();
         
         // Inventory at bottom
         this.inventoryText = this.add.text(10, this.scale.height - 30, '加强(Q): 0    闪电(E): 0    治疗(R): 0', { fontSize: '16px', color: '#ffff00' });
@@ -109,9 +123,19 @@ export default class MainScene extends Phaser.Scene {
         this.scoreText.setDepth(100);
         this.hpText.setDepth(100);
         this.hpBar.setDepth(99);
+        this.energyText.setDepth(100);
+        this.energyBar.setDepth(99);
         this.inventoryText.setDepth(100);
         this.fpsText.setDepth(100);
 
+        // Laser
+        this.laser = this.physics.add.sprite(0, 0, 'spritesheet', 'laser');
+        this.laser.setOrigin(0.5, 1); // Bottom Center
+        this.laser.setVisible(false);
+        this.laser.setActive(false);
+        this.laser.setDepth(9); // Behind player (player is 10) to look like it comes from under/center
+        this.laser.setTint(0x00ffff);
+        
         // Timers
         this.time.addEvent({
             delay: 1000,
@@ -132,6 +156,7 @@ export default class MainScene extends Phaser.Scene {
         this.physics.add.overlap(this.player, this.enemies, this.hitPlayer, undefined, this);
         this.physics.add.overlap(this.player, this.enemyBullets, this.hitPlayerBullet, undefined, this);
         this.physics.add.overlap(this.player, this.powerups, this.collectPowerup, undefined, this);
+        this.physics.add.overlap(this.laser, this.enemies, this.hitEnemyWithLaser, undefined, this);
         
         // Lightning VFX Group
         this.lightningGroup = this.add.group({
@@ -139,6 +164,33 @@ export default class MainScene extends Phaser.Scene {
             defaultFrame: 'lightning_vfx',
             maxSize: 10
         });
+
+        // Hook into postupdate to sync laser position perfectly with player
+        this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.handlePostUpdate, this);
+    }
+
+    handlePostUpdate() {
+        if (this.isLaserActive && this.player.active && this.laser.active) {
+            // Laser geometry
+            // Start slightly inside the nose to ensure connection
+            // Player nose tip is roughly y-27.
+            // We set bottom of laser to y-20 to be safely inside the fuselage.
+            const bottomY = this.player.y - 20;
+            const topY = -50;
+            const height = bottomY - topY;
+            
+            // Sync Sprite Position
+            // Origin is (0.5, 1), so we set position to (x, bottomY)
+            this.laser.setPosition(this.player.x, bottomY);
+            this.laser.setDisplaySize(16, height);
+            
+            // Sync Body Position
+            if (this.laser.body) {
+                // Body is top-left based
+                this.laser.body.reset(this.player.x - 8, topY);
+                this.laser.body.setSize(16, height);
+            }
+        }
     }
 
     update(_time: number, delta: number) {
@@ -166,12 +218,45 @@ export default class MainScene extends Phaser.Scene {
         } else if (this.cursors.down.isDown) {
             this.player.setVelocityY(speed);
         }
+
+        // Laser Logic
+        if (this.keySpace.isDown && this.playerEnergy > 0) {
+            this.isLaserActive = true;
+            this.laser.setVisible(true);
+            this.laser.setActive(true);
+            if (this.laser.body) this.laser.body.enable = true;
+            
+            // Position update is now handled in postUpdate to prevent lag
+            
+            // Pulse effect
+            this.laser.setAlpha(0.8 + 0.2 * Math.sin(this.time.now / 50));
+
+            // Consume Energy (5% per second)
+            // 5 units per 1000ms = 0.005 per ms
+            this.playerEnergy -= 0.005 * delta;
+            
+            if (this.playerEnergy <= 0) {
+                this.playerEnergy = 0;
+                this.isLaserActive = false;
+                this.laser.setVisible(false);
+                this.laser.setActive(false);
+                if (this.laser.body) this.laser.body.enable = false;
+            }
+            this.updateEnergyBar();
+        } else {
+            if (this.isLaserActive) {
+                this.isLaserActive = false;
+                this.laser.setVisible(false);
+                this.laser.setActive(false);
+                if (this.laser.body) this.laser.body.enable = false;
+            }
+        }
         
         // Lightning Effect Animation
         if (this.isLightningActive) {
             // Randomly spawn lightning bolts
             // Adjust probability based on delta to maintain rate
-            // Base: 3/10 chance per frame @ 60fps (16.6ms)
+            // Base: 3/10 chance per frame @ 60fps
             // Rate ~= 0.3 * 60 = 18 bolts/sec (very high?)
             // Let's normalize. 
             // Chance P per ms. 
@@ -362,28 +447,57 @@ export default class MainScene extends Phaser.Scene {
 
         // @ts-ignore
         if (enemy.hp <= 0) {
-            // Play explosion
-            const explosion = this.add.sprite(enemy.x, enemy.y, 'spritesheet', 'explosion_0');
-            explosion.play('explode');
-            explosion.once('animationcomplete', () => {
-                explosion.destroy();
-            });
+            this.destroyEnemy(enemy);
+        }
+    }
 
-            this.enemies.killAndHide(enemy);
-            if (enemy.body) enemy.body.enable = false;
+    hitEnemyWithLaser(_laser: any, enemy: any) {
+        if (!enemy.active) return;
+        
+        // Laser damage
+        // @ts-ignore
+        enemy.hp -= 0.2;
+        
+        enemy.setTint(0x00ffff);
+        this.time.delayedCall(50, () => {
+            if (enemy.active) enemy.clearTint();
+        });
+
+        // @ts-ignore
+        if (enemy.hpText) enemy.hpText.setText(Math.ceil(enemy.hp).toString());
+
+        // @ts-ignore
+        if (enemy.hp <= 0) {
+            this.destroyEnemy(enemy);
+        }
+    }
+
+    destroyEnemy(enemy: any) {
+        // Play explosion
+        const explosion = this.add.sprite(enemy.x, enemy.y, 'spritesheet', 'explosion_0');
+        explosion.play('explode');
+        explosion.once('animationcomplete', () => {
+            explosion.destroy();
+        });
+
+        this.enemies.killAndHide(enemy);
+        if (enemy.body) enemy.body.enable = false;
+        // @ts-ignore
+        if (enemy.hpText) {
             // @ts-ignore
-            if (enemy.hpText) {
-                // @ts-ignore
-                enemy.hpText.destroy();
-                // @ts-ignore
-                enemy.hpText = null;
-            }
-            this.score += 10;
-            this.scoreText.setText('Score: ' + this.score);
-            
-            if (Math.random() > 0.8) { // Increased drop rate for testing
-                this.spawnPowerup(enemy.x, enemy.y);
-            }
+            enemy.hpText.destroy();
+            // @ts-ignore
+            enemy.hpText = null;
+        }
+        this.score += 10;
+        this.scoreText.setText('Score: ' + this.score);
+        
+        // Collect Energy (10%)
+        this.playerEnergy = Math.min(this.playerEnergy + 10, this.maxEnergy);
+        this.updateEnergyBar();
+        
+        if (Math.random() > 0.8) { // Increased drop rate for testing
+            this.spawnPowerup(enemy.x, enemy.y);
         }
     }
 
@@ -449,6 +563,25 @@ export default class MainScene extends Phaser.Scene {
         this.hpText.setText(`HP: ${this.playerHp}/${this.maxHp}`);
         this.hpText.setPosition(15, 42); // Center text in bar
         this.hpText.setDepth(101); // Ensure text is above bar
+    }
+
+    updateEnergyBar() {
+        this.energyBar.clear();
+        
+        // Background
+        this.energyBar.fillStyle(0x333333);
+        this.energyBar.fillRect(10, 70, 200, 20);
+        
+        // Energy
+        const percent = Phaser.Math.Clamp(this.playerEnergy / this.maxEnergy, 0, 1);
+        
+        this.energyBar.fillStyle(0x00ffff);
+        this.energyBar.fillRect(10, 70, 200 * percent, 20);
+        
+        // Text update
+        this.energyText.setText(`MP: ${Math.floor(this.playerEnergy)}/${this.maxEnergy}`);
+        this.energyText.setPosition(15, 72);
+        this.energyText.setDepth(101);
     }
 
     spawnPowerup(x: number, y: number) {
@@ -628,6 +761,9 @@ export default class MainScene extends Phaser.Scene {
         
         // Bullet Enemy: (100, 22) 20x20
         if (!sheet.has('enemyBullet')) sheet.add('enemyBullet', 0, 100, 22, 20, 20);
+        
+        // Laser: (130, 0) 16x64
+        if (!sheet.has('laser')) sheet.add('laser', 0, 130, 0, 16, 64);
         
         // Powerups (y=70)
         if (!sheet.has('powerup_upgrade')) sheet.add('powerup_upgrade', 0, 0, 70, 40, 40);

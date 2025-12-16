@@ -1,4 +1,3 @@
-
 import os
 import random
 from PIL import Image, ImageDraw, ImageFont
@@ -148,6 +147,30 @@ def create_bullet(is_enemy):
         draw.ellipse([(0, 0), (12, 12)], fill='#FF0000', outline='#FFaaaa')
     return img
 
+def create_laser():
+    img = Image.new('RGBA', (16, 64), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    # Center is 7.5 (for 16px width, pixels 0-15)
+    # We want symmetry around 7.5.
+    
+    # Core (White) - Width 2 (7,8)
+    # Pixel 7: x[7,8]. Pixel 8: x[8,9].
+    # Rectangle [(7,0), (8,64)] covers x=7,8. Width 2. Center 8.0.
+    draw.rectangle([(7, 0), (8, 64)], fill='#FFFFFF')
+    
+    # Inner Glow (Cyan) - Width 6 (5,6, 7,8, 9,10)
+    # Left: 5,6. Right: 9,10.
+    draw.rectangle([(5, 0), (6, 64)], fill='#00FFFF')
+    draw.rectangle([(9, 0), (10, 64)], fill='#00FFFF')
+    
+    # Outer Glow (Faint) - Width 10 (3,4...11,12)
+    # Left: 3,4. Right: 11,12.
+    draw.rectangle([(3, 0), (4, 64)], fill=(0, 255, 255, 100))
+    draw.rectangle([(11, 0), (12, 64)], fill=(0, 255, 255, 100))
+    
+    return img
+
 def create_powerup(type_name):
     img = Image.new('RGBA', (40, 40), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -286,6 +309,10 @@ def main():
     b_enemy = create_bullet(True)
     sheet.paste(b_enemy, (100, 22))
     
+    # Laser
+    laser = create_laser()
+    sheet.paste(laser, (130, 0))
+
     # 3. Powerups
     p_up = create_powerup('upgrade')
     p_str = create_powerup('strengthen')
