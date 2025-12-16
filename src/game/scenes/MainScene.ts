@@ -46,6 +46,9 @@ export default class MainScene extends Phaser.Scene {
     private enemySpawnCount: number = 0;
     private nextBigEnemySpawn: number = 0;
 
+    private fireLevel: number = 1; // Current fire level (1-5)
+    private fireLevelText!: Phaser.GameObjects.Text; // Fire level display
+
     private audioManager!: AudioManager;
     private laserSound!: Phaser.Sound.BaseSound | null;
     private laserLoopSound!: Phaser.Sound.BaseSound | null;
@@ -92,7 +95,7 @@ export default class MainScene extends Phaser.Scene {
         // Groups
         this.bullets = this.physics.add.group({
             classType: Phaser.Physics.Arcade.Sprite,
-            maxSize: 30,
+            maxSize: 100,
             runChildUpdate: true
         });
 
@@ -142,10 +145,14 @@ export default class MainScene extends Phaser.Scene {
         
         // Inventory at bottom
         this.inventoryText = this.add.text(10, this.scale.height - 30, '加强(Q): 0    闪电(E): 0    治疗(R): 0', { fontSize: '16px', color: '#ffff00' });
-        
+
+        // Fire level display
+        this.fireLevelText = this.add.text(10, this.scale.height - 50, '火力 Lv.1', { fontSize: '14px', color: '#ffaa00' }).setDepth(100);
+
         this.scoreText.setDepth(100);
         this.hpText.setDepth(100);
         this.hpBar.setDepth(99);
+        this.fireLevelText.setDepth(100);
         this.energyText.setDepth(100);
         this.energyBar.setDepth(99);
         this.inventoryText.setDepth(100);
@@ -363,6 +370,9 @@ export default class MainScene extends Phaser.Scene {
             }
         }
 
+        // Check for fire level upgrades
+        this.checkFireLevelUpgrade();
+
         // Handle Input for Powerups
         if (this.input.keyboard) {
             if (Phaser.Input.Keyboard.JustDown(this.keyQ)) this.usePowerup('powerup_upgrade');
@@ -396,7 +406,7 @@ export default class MainScene extends Phaser.Scene {
                     // Use time to calculate sine wave velocity
                     const time = this.time.now;
                     e.setVelocityX(Math.sin(time / 1000) * 100);
-                    
+
                     // Shooting: Ring of bullets
                     e.shootTimer += delta;
                     if (e.shootTimer > 2000) { // Fire every 2 seconds
@@ -404,13 +414,73 @@ export default class MainScene extends Phaser.Scene {
                         this.fireBigEnemyRing(e);
                     }
                 } else {
-                    // Normal Enemy shooting
-                    // Base: 1% (10/1000) per frame @ 60fps
-                    // Rate: 0.01 * 60 = 0.6 shots/sec
-                    // New: 0.0006 per ms * delta
-                    // 0.0006 * 10000 = 6
-                    if (Phaser.Math.Between(0, 10000) < 6 * delta) {
-                        this.fireEnemyBullet(e);
+                    // Small Enemy Movement Patterns
+                    e.moveTimer += delta;
+
+                    // @ts-ignore
+                    switch (e.movePattern) {
+                        case 1: // Sine wave movement
+                            // @ts-ignore
+                            const sineWave = Math.sin(e.moveTimer / 500) * 2;
+                            let targetVelocityX = sineWave * 50;
+
+                            // Boundary check - keep enemy within screen bounds
+                            const enemyHalfWidth = e.width / 2 || 20; // Default half width if e.width not available
+                            if (e.x <= enemyHalfWidth && targetVelocityX < 0) {
+                                targetVelocityX = Math.abs(targetVelocityX); // Force move right
+                            } else if (e.x >= this.scale.width - enemyHalfWidth && targetVelocityX > 0) {
+                                targetVelocityX = -Math.abs(targetVelocityX); // Force move left
+                            }
+
+                            e.setVelocityX(targetVelocityX);
+                            break;
+                        case 2: // Horizontal sway
+                            // @ts-ignore
+                            const swayPhase = (e.moveTimer % 2000) / 2000; // 0 to 1 over 2 seconds
+                            let targetSwayX = Math.sin(swayPhase * Math.PI * 2) * 80;
+
+                            // Boundary check - clamp to screen bounds
+                            const swayEnemyHalfWidth = e.width / 2 || 20;
+                            const minX = swayEnemyHalfWidth;
+                            const maxX = this.scale.width - swayEnemyHalfWidth;
+
+                            // Calculate desired next position
+                            const nextX = e.x + targetSwayX * (delta / 1000);
+
+                            if (nextX < minX) {
+                                // Force movement toward right if too far left
+                                targetSwayX = Math.abs(targetSwayX) * 2; // Stronger push back
+                            } else if (nextX > maxX) {
+                                // Force movement toward left if too far right
+                                targetSwayX = -Math.abs(targetSwayX) * 2; // Stronger push back
+                            }
+
+                            e.setVelocityX(targetSwayX);
+                            break;
+                        default: // 0: Straight movement
+                            e.setVelocityX(0);
+                            break;
+                    }
+
+                    // Shooting Logic
+                    e.shootTimer += delta;
+
+                    // @ts-ignore
+                    if (e.hasRingShot) {
+                        // Ring shot pattern: fire every 3 seconds
+                        if (e.shootTimer > 3000) {
+                            e.shootTimer = 0;
+                            this.fireSmallEnemyRing(e);
+                        }
+                    } else {
+                        // Normal shooting pattern
+                        // Base: 1% (10/1000) per frame @ 60fps
+                        // Rate: 0.01 * 60 = 0.6 shots/sec
+                        // New: 0.0006 per ms * delta
+                        // 0.0006 * 10000 = 6
+                        if (Phaser.Math.Between(0, 10000) < 6 * delta) {
+                            this.fireEnemyBullet(e);
+                        }
                     }
                 }
 
@@ -469,6 +539,32 @@ export default class MainScene extends Phaser.Scene {
         this.audioManager.playWithPitchVariation('enemyShoot', 0.5, 0.7); // Deeper sound
     }
 
+    fireSmallEnemyRing(enemy: any) {
+        const numBullets = 8; // Fewer bullets than big enemy
+        const angleStep = 360 / numBullets;
+
+        for (let i = 0; i < numBullets; i++) {
+            const angle = i * angleStep;
+            const bullet = this.enemyBullets.get(enemy.x, enemy.y);
+
+            if (bullet) {
+                bullet.setActive(true);
+                bullet.setVisible(true);
+                if (bullet.body) {
+                    bullet.body.enable = true;
+                    bullet.body.reset(enemy.x, enemy.y);
+                }
+                bullet.setTexture('spritesheet', 'enemyBullet');
+
+                // Calculate velocity vector (slower than big enemy)
+                const vec = new Phaser.Math.Vector2(0, 150); // Speed 150
+                vec.rotate(Phaser.Math.DegToRad(angle));
+                bullet.setVelocity(vec.x, vec.y);
+            }
+        }
+        this.audioManager.playWithPitchVariation('enemyShoot', 0.9, 1.2); // Higher pitch for small enemy
+    }
+
     fireEnemyBullet(enemy: any) {
         const bullet = this.enemyBullets.get(enemy.x, enemy.y + 20);
         if (bullet) {
@@ -484,6 +580,44 @@ export default class MainScene extends Phaser.Scene {
             // Play enemy shoot sound with random pitch variation
             this.audioManager.playWithPitchVariation('enemyShoot', 0.8, 1.2);
         }
+    }
+
+    checkFireLevelUpgrade() {
+        const scoreThresholds = [1000, 2000, 4000, 8000]; // Fire level thresholds
+
+        for (let i = scoreThresholds.length - 1; i >= 0; i--) {
+            if (this.score >= scoreThresholds[i] && this.fireLevel < i + 2) {
+                this.fireLevel = i + 2;
+                this.showFireLevelUpgrade();
+                break;
+            }
+        }
+
+        // Update fire level display
+        this.fireLevelText.setText(`火力 Lv.${this.fireLevel}`);
+    }
+
+    showFireLevelUpgrade() {
+        const upgradeText = this.add.text(this.scale.width / 2, this.scale.height / 2 - 100, `火力升级！Lv.${this.fireLevel}`, {
+            fontSize: '32px',
+            color: '#ffff00',
+            backgroundColor: '#000000',
+            padding: { x: 20, y: 10 }
+        }).setOrigin(0.5).setDepth(300);
+
+        // Animate the text
+        this.tweens.add({
+            targets: upgradeText,
+            alpha: 0,
+            y: upgradeText.y - 50,
+            scale: 1.5,
+            duration: 2000,
+            ease: 'Power2',
+            onComplete: () => upgradeText.destroy()
+        });
+
+        // Play upgrade sound
+        this.audioManager.playSound('powerup');
     }
 
     fireBullet() {
@@ -513,18 +647,26 @@ export default class MainScene extends Phaser.Scene {
             // Play wave fire sound with slight variation
             this.audioManager.playWithPitchVariation('shoot', 0.9, 1.1);
         } else {
-            // Normal Fire
-            const bullet = this.bullets.get(this.player.x, this.player.y - 30);
-            if (bullet) {
-                bullet.setActive(true);
-                bullet.setVisible(true);
-                if (bullet.body) {
-                    bullet.body.enable = true;
-                    bullet.body.reset(this.player.x, this.player.y - 30);
+            // Normal Fire with multiple rows based on fire level
+            const rows = Math.min(this.fireLevel, 5); // Max 5 rows
+            const horizontalSpacing = 12; // Space between bullets horizontally
+
+            for (let row = 0; row < rows; row++) {
+                const bullet = this.bullets.get(this.player.x, this.player.y - 30);
+                if (bullet) {
+                    bullet.setActive(true);
+                    bullet.setVisible(true);
+                    if (bullet.body) {
+                        bullet.body.enable = true;
+                        // Calculate position for this row
+                        const xOffset = (row - (rows - 1) / 2) * horizontalSpacing;
+                        bullet.body.reset(this.player.x + xOffset, this.player.y - 30);
+                    }
+                    bullet.setTexture('spritesheet', 'bullet');
+                    bullet.setVelocity(0, -400);
                 }
-                bullet.setTexture('spritesheet', 'bullet');
-                bullet.setVelocity(0, -400);
             }
+
             // Play normal shoot sound
             this.audioManager.playSound('shoot');
         }
@@ -562,6 +704,25 @@ export default class MainScene extends Phaser.Scene {
 
             // Flip enemy to fly head-first toward player
             enemy.setFlipY(false);
+
+            // Random movement and attack patterns
+            // @ts-ignore
+            enemy.movePattern = Phaser.Math.Between(0, 2); // 0: straight, 1: sine wave, 2: horizontal sway
+            // @ts-ignore
+            enemy.hasRingShot = Phaser.Math.Between(0, 1) === 1; // 50% chance for ring shot
+            // @ts-ignore
+            enemy.shootTimer = 0;
+            // @ts-ignore
+            enemy.moveTimer = 0;
+
+            // Visual distinction for ring shot enemies
+            // @ts-ignore
+            if (enemy.hasRingShot) {
+                enemy.setTint(0xff9900); // Orange tint for ring shot enemies
+            } else {
+                enemy.clearTint(); // Normal color for regular enemies
+            }
+
             enemy.setVelocityY(150);
             // @ts-ignore
             enemy.hp = 3.0; // Initialize with explicit float value
@@ -648,10 +809,19 @@ export default class MainScene extends Phaser.Scene {
         // Play hit sound
         this.audioManager.playSound('hit');
 
-        // Visual feedback for hit
+        // Visual feedback for hit - store original tint
+        // @ts-ignore
+        const originalTint = enemy.hasRingShot ? 0xff9900 : 0xffffff;
         enemy.setTint(0xff0000);
         this.time.delayedCall(100, () => {
-            if (enemy.active) enemy.clearTint();
+            if (enemy.active) {
+                // @ts-ignore
+                if (enemy.hasRingShot) {
+                    enemy.setTint(0xff9900); // Restore orange tint for ring shot enemies
+                } else {
+                    enemy.clearTint(); // Restore normal color
+                }
+            }
         });
 
         // Update HP bar
@@ -678,7 +848,14 @@ export default class MainScene extends Phaser.Scene {
 
         enemy.setTint(0x00ffff);
         this.time.delayedCall(50, () => {
-            if (enemy.active) enemy.clearTint();
+            if (enemy.active) {
+                // @ts-ignore
+                if (enemy.hasRingShot) {
+                    enemy.setTint(0xff9900); // Restore orange tint for ring shot enemies
+                } else {
+                    enemy.clearTint(); // Restore normal color
+                }
+            }
         });
 
         // Update HP bar
@@ -1076,6 +1253,8 @@ export default class MainScene extends Phaser.Scene {
 
         // Ensure laser is properly deactivated
         this.isLaserActive = false;
+        this.isLightningActive = false;
+        this.isWaveFireActive = false;
 
         this.add.text(this.scale.width / 2, this.scale.height / 2, 'GAME OVER', {
             fontSize: '40px',
@@ -1089,9 +1268,90 @@ export default class MainScene extends Phaser.Scene {
 
         if (this.input.keyboard) {
             this.input.keyboard.once('keydown-SPACE', () => {
+                // Reset all game state before restarting
+                this.resetGameState();
                 this.scene.restart();
             });
         }
+    }
+
+    resetGameState() {
+        // Reset player stats
+        this.playerHp = 100;
+        this.playerEnergy = 0; // Reset energy to 0
+
+        // Reset fire level and score
+        this.score = 0;
+        this.fireLevel = 1;
+
+        // Reset inventory
+        this.inventory = {
+            'powerup_upgrade': 0,
+            'powerup_strengthen': 0,
+            'powerup_lightning': 0
+        };
+
+        // Reset enemy spawn counters
+        this.enemySpawnCount = 0;
+        this.nextBigEnemySpawn = Phaser.Math.Between(15, 23);
+
+        // Reset UI displays
+        this.scoreText.setText('Score: 0');
+        this.fireLevelText.setText('火力 Lv.1');
+        this.inventoryText.setText('加强(Q): 0    闪电(E): 0    治疗(R): 0');
+
+        // Update bars
+        this.updateHpBar();
+        this.updateEnergyBar();
+
+        // Clear any active enemies and bullets
+        this.enemies.children.each((e: any) => {
+            if (e.active) {
+                this.enemies.killAndHide(e);
+                if (e.body) e.body.enable = false;
+                // @ts-ignore
+                if (e.hpBar) {
+                    e.hpBar.destroy();
+                    e.hpBar = null;
+                }
+                // @ts-ignore
+                if (e.hpText) {
+                    e.hpText.destroy();
+                    e.hpText = null;
+                }
+            }
+            return true;
+        });
+
+        this.bullets.children.each((b: any) => {
+            if (b.active) {
+                this.bullets.killAndHide(b);
+                if (b.body) b.body.enable = false;
+            }
+            return true;
+        });
+
+        this.enemyBullets.children.each((b: any) => {
+            if (b.active) {
+                this.enemyBullets.killAndHide(b);
+                if (b.body) b.body.enable = false;
+            }
+            return true;
+        });
+
+        this.powerups.children.each((p: any) => {
+            if (p.active) {
+                this.powerups.killAndHide(p);
+                if (p.body) p.body.enable = false;
+            }
+            return true;
+        });
+
+        // Clear lightning bolts
+        this.lightningGroup.clear(true, true);
+
+        // Clear laser graphics
+        this.laserGraphics.clear();
     }
 
     
