@@ -390,12 +390,6 @@ export default class MainScene extends Phaser.Scene {
                     this.updateEnemyHpBar(e);
                 }
 
-                // Update HP Text (if exists, though we use bars now mostly? Code still has text logic)
-                if (e.hpText) {
-                    e.hpText.setPosition(e.x, e.y - (e.isBig ? 80 : 30));
-                    e.hpText.setText(parseFloat(e.hp.toFixed(1)).toString());
-                }
-
                 // Big Enemy Logic
                 if (e.isBig) {
                     // Movement: Sway left/right
@@ -624,19 +618,21 @@ export default class MainScene extends Phaser.Scene {
             // @ts-ignore
             enemy.shootTimer = 0;
             
-            // Ensure no leftover HP bar from normal enemy state
+            // Ensure no leftover HP text from normal enemy state
             // @ts-ignore
-            if (enemy.hpBar) {
+            if (enemy.hpText) {
                 // @ts-ignore
-                enemy.hpBar.destroy();
+                enemy.hpText.destroy();
                 // @ts-ignore
-                enemy.hpBar = null;
+                enemy.hpText = null;
             }
-            
+
+            // Create HP bar for big enemy
             // @ts-ignore
-            if (enemy.hpText) enemy.hpText.destroy();
+            if (enemy.hpBar) enemy.hpBar.destroy();
             // @ts-ignore
-            enemy.hpText = this.add.text(x, -130, '50.0', { fontSize: '20px', color: '#ff00ff', fontStyle: 'bold' }).setOrigin(0.5);
+            enemy.hpBar = this.add.graphics();
+            this.updateEnemyHpBar(enemy);
         }
     }
 
@@ -842,10 +838,15 @@ export default class MainScene extends Phaser.Scene {
     updateEnemyHpBar(enemy: any) {
         if (!enemy.hpBar) return;
 
-        const barWidth = 40;
-        const barHeight = 4;
+        // Adjust bar size based on enemy type
+        // @ts-ignore
+        const isBig = enemy.isBig || false;
+        const barWidth = isBig ? 80 : 40; // Double width for big enemy
+        const barHeight = isBig ? 6 : 4;   // Slightly thicker for big enemy
+        const yOffset = isBig ? -60 : -35;  // Position further above big enemy
+
         const x = enemy.x - barWidth / 2;
-        const y = enemy.y - 35;
+        const y = enemy.y + yOffset;
 
         enemy.hpBar.clear();
 
@@ -869,8 +870,8 @@ export default class MainScene extends Phaser.Scene {
         enemy.hpBar.fillStyle(color);
         enemy.hpBar.fillRect(x, y, barWidth * hpPercent, barHeight);
 
-        // Border
-        enemy.hpBar.lineStyle(1, 0xffffff, 0.5);
+        // Border (thicker for big enemy)
+        enemy.hpBar.lineStyle(isBig ? 2 : 1, 0xffffff, 0.6);
         enemy.hpBar.strokeRect(x, y, barWidth, barHeight);
     }
 
