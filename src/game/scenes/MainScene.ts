@@ -129,7 +129,7 @@ export default class MainScene extends Phaser.Scene {
 
         // Energy Bar
         this.energyBar = this.add.graphics();
-        this.energyText = this.add.text(10, 70, 'MP: 0/100', { fontSize: '16px', color: '#0088ff' });
+        this.energyText = this.add.text(10, 70, 'MP: 0/100', { fontSize: '16px', color: '#fff' });
         this.updateEnergyBar();
         
         // Inventory at bottom
@@ -377,10 +377,9 @@ export default class MainScene extends Phaser.Scene {
 
         this.enemies.children.each((e: any) => {
             if (e.active) {
-                // Update HP Text
-                if (e.hpText) {
-                    e.hpText.setPosition(e.x, e.y - 30);
-                    e.hpText.setText(parseFloat(e.hp.toFixed(1)).toString());
+                // Update HP bar position
+                if (e.hpBar) {
+                    this.updateEnemyHpBar(e);
                 }
 
                 // Enemy shooting
@@ -495,15 +494,21 @@ export default class MainScene extends Phaser.Scene {
             
             const type = Phaser.Math.Between(0, 5);
             enemy.setTexture('spritesheet', `enemy_${type}`);
-            
+
+            // Flip enemy to fly head-first toward player
+            enemy.setFlipY(false);
             enemy.setVelocityY(150);
             // @ts-ignore
-            enemy.hp = 3;
-            
+            enemy.hp = 3.0; // Initialize with explicit float value
             // @ts-ignore
-            if (enemy.hpText) enemy.hpText.destroy();
+            enemy.maxHp = 3.0; // Store max HP for bar calculation
+
+            // Create HP bar for enemy instead of text
             // @ts-ignore
-            enemy.hpText = this.add.text(x, -70, '3', { fontSize: '16px', color: '#fff' }).setOrigin(0.5);
+            if (enemy.hpBar) enemy.hpBar.destroy();
+            // @ts-ignore
+            enemy.hpBar = this.add.graphics();
+            this.updateEnemyHpBar(enemy);
         }
     }
 
@@ -514,7 +519,7 @@ export default class MainScene extends Phaser.Scene {
         if (bullet.body) bullet.body.enable = false;
 
         // @ts-ignore
-        enemy.hp--;
+        enemy.hp -= 1.0; // Use float damage
 
         // Play hit sound
         this.audioManager.playSound('hit');
@@ -525,8 +530,8 @@ export default class MainScene extends Phaser.Scene {
             if (enemy.active) enemy.clearTint();
         });
 
-        // @ts-ignore
-        if (enemy.hpText) enemy.hpText.setText(parseFloat(enemy.hp.toFixed(1)).toString());
+        // Update HP bar
+        this.updateEnemyHpBar(enemy);
 
         // @ts-ignore
         if (enemy.hp <= 0) {
@@ -552,8 +557,8 @@ export default class MainScene extends Phaser.Scene {
             if (enemy.active) enemy.clearTint();
         });
 
-        // @ts-ignore
-        if (enemy.hpText) enemy.hpText.setText(parseFloat(enemy.hp.toFixed(1)).toString());
+        // Update HP bar
+        this.updateEnemyHpBar(enemy);
 
         // @ts-ignore
         if (enemy.hp <= 0) {
@@ -575,11 +580,11 @@ export default class MainScene extends Phaser.Scene {
         this.enemies.killAndHide(enemy);
         if (enemy.body) enemy.body.enable = false;
         // @ts-ignore
-        if (enemy.hpText) {
+        if (enemy.hpBar) {
             // @ts-ignore
-            enemy.hpText.destroy();
+            enemy.hpBar.destroy();
             // @ts-ignore
-            enemy.hpText = null;
+            enemy.hpBar = null;
         }
         this.score += 10;
         this.scoreText.setText('Score: ' + this.score);
@@ -600,11 +605,11 @@ export default class MainScene extends Phaser.Scene {
         if (enemy.body) enemy.body.enable = false;
 
         // @ts-ignore
-        if (enemy.hpText) {
+        if (enemy.hpBar) {
             // @ts-ignore
-            enemy.hpText.destroy();
+            enemy.hpBar.destroy();
             // @ts-ignore
-            enemy.hpText = null;
+            enemy.hpBar = null;
         }
 
         this.takeDamage(20, 'collision'); // Collision with enemy
@@ -673,21 +678,56 @@ export default class MainScene extends Phaser.Scene {
 
     updateEnergyBar() {
         this.energyBar.clear();
-        
+
         // Background
         this.energyBar.fillStyle(0x333333);
         this.energyBar.fillRect(10, 70, 200, 20);
-        
+
         // Energy
         const percent = Phaser.Math.Clamp(this.playerEnergy / this.maxEnergy, 0, 1);
-        
+
         this.energyBar.fillStyle(0x0088ff);
         this.energyBar.fillRect(10, 70, 200 * percent, 20);
-        
-        // Text update
-        this.energyText.setText(`MP: ${Math.floor(this.playerEnergy)}/${this.maxEnergy}`);
+
+        // Text update - 确保显示整数，避免小数显示问题
+        this.energyText.setText(`MP: ${Math.round(this.playerEnergy)}/${this.maxEnergy}`);
         this.energyText.setPosition(15, 72);
         this.energyText.setDepth(101);
+    }
+
+    updateEnemyHpBar(enemy: any) {
+        if (!enemy.hpBar) return;
+
+        const barWidth = 40;
+        const barHeight = 4;
+        const x = enemy.x - barWidth / 2;
+        const y = enemy.y - 35;
+
+        enemy.hpBar.clear();
+
+        // Background (dark red)
+        enemy.hpBar.fillStyle(0x660000);
+        enemy.hpBar.fillRect(x, y, barWidth, barHeight);
+
+        // HP bar (red to green gradient based on health)
+        // @ts-ignore
+        const hpPercent = Math.max(0, enemy.hp / enemy.maxHp);
+        let color: number;
+
+        if (hpPercent > 0.6) {
+            color = 0x00ff00; // Green
+        } else if (hpPercent > 0.3) {
+            color = 0xffff00; // Yellow
+        } else {
+            color = 0xff0000; // Red
+        }
+
+        enemy.hpBar.fillStyle(color);
+        enemy.hpBar.fillRect(x, y, barWidth * hpPercent, barHeight);
+
+        // Border
+        enemy.hpBar.lineStyle(1, 0xffffff, 0.5);
+        enemy.hpBar.strokeRect(x, y, barWidth, barHeight);
     }
 
     spawnPowerup(x: number, y: number) {
@@ -822,8 +862,9 @@ export default class MainScene extends Phaser.Scene {
         this.enemies.children.each((e: any) => {
             if (e.active) {
                 e.hp -= damage;
-                if (e.hpText) e.hpText.setText(parseFloat(e.hp.toFixed(1)).toString());
-                
+                // Update HP bar
+                this.updateEnemyHpBar(e);
+
                 if (e.hp <= 0) {
                     // Play explosion
                     const explosion = this.add.sprite(e.x, e.y, 'spritesheet', 'explosion_0');
@@ -834,9 +875,9 @@ export default class MainScene extends Phaser.Scene {
 
                     this.enemies.killAndHide(e);
                     if (e.body) e.body.enable = false;
-                    if (e.hpText) {
-                        e.hpText.destroy();
-                        e.hpText = null;
+                    if (e.hpBar) {
+                        e.hpBar.destroy();
+                        e.hpBar = null;
                     }
                     this.score += 10;
                 }
@@ -908,6 +949,7 @@ export default class MainScene extends Phaser.Scene {
         }
     }
 
+    
     // Add cleanup method to handle scene shutdown
     shutdown() {
         // Stop all sounds when scene is destroyed

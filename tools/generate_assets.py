@@ -56,8 +56,9 @@ def create_enemy(color, type_idx):
         c_detail = '#254d15'
         
         # Main Wings
-        draw.polygon([(32, 20), (4, 30), (4, 45), (32, 40)], fill=c_main, outline=c_dark) # Left
-        draw.polygon([(32, 20), (60, 30), (60, 45), (32, 40)], fill=c_main, outline=c_dark) # Right
+        # Straight wings to avoid confusion
+        draw.polygon([(32, 20), (4, 20), (4, 40), (32, 40)], fill=c_main, outline=c_dark) # Left
+        draw.polygon([(32, 20), (60, 20), (60, 40), (32, 40)], fill=c_main, outline=c_dark) # Right
         
         # Fuselage
         draw.rectangle([(26, 5), (38, 60)], fill=c_main, outline=c_dark)
@@ -105,8 +106,9 @@ def create_enemy(color, type_idx):
         draw.rectangle([(22, 10), (42, 55)], fill=c_main, outline=c_dark)
         
         # Wings
-        draw.polygon([(22, 25), (0, 35), (0, 45), (22, 40)], fill=c_main, outline=c_dark)
-        draw.polygon([(42, 25), (64, 35), (64, 45), (42, 40)], fill=c_main, outline=c_dark)
+        # Straight wings
+        draw.polygon([(22, 25), (0, 25), (0, 40), (22, 40)], fill=c_main, outline=c_dark)
+        draw.polygon([(42, 25), (64, 25), (64, 40), (42, 40)], fill=c_main, outline=c_dark)
         
         # Front Engines
         draw.rectangle([(20, 50), (28, 60)], fill=c_metal, outline='black')
