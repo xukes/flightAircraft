@@ -417,6 +417,13 @@ export default class MainScene extends Phaser.Scene {
                     // Small Enemy Movement Patterns
                     e.moveTimer += delta;
 
+                    // Store movement direction state for smooth transitions
+                    // @ts-ignore
+                    if (e.moveDirection === undefined) {
+                        // @ts-ignore
+                        e.moveDirection = 1; // 1 for right, -1 for left
+                    }
+
                     // @ts-ignore
                     switch (e.movePattern) {
                         case 1: // Sine wave movement
@@ -424,42 +431,83 @@ export default class MainScene extends Phaser.Scene {
                             const sineWave = Math.sin(e.moveTimer / 500) * 2;
                             let targetVelocityX = sineWave * 50;
 
-                            // Boundary check - keep enemy within screen bounds
+                            // Boundary check - reverse direction when reaching edges
                             const enemyHalfWidth = e.width / 2 || 20; // Default half width if e.width not available
-                            if (e.x <= enemyHalfWidth && targetVelocityX < 0) {
-                                targetVelocityX = Math.abs(targetVelocityX); // Force move right
-                            } else if (e.x >= this.scale.width - enemyHalfWidth && targetVelocityX > 0) {
-                                targetVelocityX = -Math.abs(targetVelocityX); // Force move left
+                            const leftBound = enemyHalfWidth + 10; // Add small margin
+                            const rightBound = this.scale.width - enemyHalfWidth - 10;
+
+                            if (e.x <= leftBound && e.moveDirection === -1) {
+                                // @ts-ignore
+                                e.moveDirection = 1; // Switch to moving right
+                                // Smooth transition by adjusting the phase
+                                // @ts-ignore
+                                e.moveTimer = 250; // Set to quarter phase for rightward movement
+                                // Force position away from boundary
+                                e.x = leftBound + 1;
+                            } else if (e.x >= rightBound && e.moveDirection === 1) {
+                                // @ts-ignore
+                                e.moveDirection = -1; // Switch to moving left
+                                // Smooth transition by adjusting the phase
+                                // @ts-ignore
+                                e.moveTimer = 750; // Set to three-quarter phase for leftward movement
+                                // Force position away from boundary
+                                e.x = rightBound - 1;
                             }
 
+                            // Apply movement based on current direction and sine wave
                             e.setVelocityX(targetVelocityX);
                             break;
                         case 2: // Horizontal sway
                             // @ts-ignore
-                            const swayPhase = (e.moveTimer % 2000) / 2000; // 0 to 1 over 2 seconds
-                            let targetSwayX = Math.sin(swayPhase * Math.PI * 2) * 80;
-
-                            // Boundary check - clamp to screen bounds
                             const swayEnemyHalfWidth = e.width / 2 || 20;
-                            const minX = swayEnemyHalfWidth;
-                            const maxX = this.scale.width - swayEnemyHalfWidth;
+                            const swayLeftBound = swayEnemyHalfWidth + 10;
+                            const swayRightBound = this.scale.width - swayEnemyHalfWidth - 10;
 
-                            // Calculate desired next position
-                            const nextX = e.x + targetSwayX * (delta / 1000);
-
-                            if (nextX < minX) {
-                                // Force movement toward right if too far left
-                                targetSwayX = Math.abs(targetSwayX) * 2; // Stronger push back
-                            } else if (nextX > maxX) {
-                                // Force movement toward left if too far right
-                                targetSwayX = -Math.abs(targetSwayX) * 2; // Stronger push back
+                            // Check if enemy needs to change direction
+                            // @ts-ignore
+                            if (e.x <= swayLeftBound && e.moveDirection === -1) {
+                                // @ts-ignore
+                                e.moveDirection = 1; // Change direction to right
+                                // Force position away from boundary
+                                e.x = swayLeftBound + 1;
+                            } else if (e.x >= swayRightBound && e.moveDirection === 1) {
+                                // @ts-ignore
+                                e.moveDirection = -1; // Change direction to left
+                                // Force position away from boundary
+                                e.x = swayRightBound - 1;
                             }
+
+                            // Calculate smooth horizontal movement based on current direction
+                            // Use a continuous sine wave but shift phase based on direction
+                            // @ts-ignore
+                            const directionPhase = e.moveDirection === 1 ? 0 : Math.PI;
+                            // @ts-ignore
+                            const swayPhase = ((e.moveTimer % 2000) / 2000) * Math.PI * 2 + directionPhase;
+                            let targetSwayX = Math.sin(swayPhase) * 80;
 
                             e.setVelocityX(targetSwayX);
                             break;
                         default: // 0: Straight movement
                             e.setVelocityX(0);
+                            // @ts-ignore
+                            e.moveDirection = 1; // Reset direction
                             break;
+                    }
+
+                    // Additional boundary enforcement - clamp position to screen bounds
+                    const currentEnemyHalfWidth = e.width / 2 || 20;
+                    const minX = currentEnemyHalfWidth;
+                    const maxX = this.scale.width - currentEnemyHalfWidth;
+
+                    // Force clamping if somehow enemy gets outside bounds
+                    if (e.x < minX) {
+                        e.x = minX;
+                        // @ts-ignore
+                        e.moveDirection = 1; // Force move right
+                    } else if (e.x > maxX) {
+                        e.x = maxX;
+                        // @ts-ignore
+                        e.moveDirection = -1; // Force move left
                     }
 
                     // Shooting Logic
@@ -625,9 +673,14 @@ export default class MainScene extends Phaser.Scene {
         if (this.isLaserActive) return;
 
         if (this.isWaveFireActive) {
-            // Wave Fire: 3 bullets
-            const angles = [-15, 0, 15];
-            angles.forEach(angle => {
+            // Wave Fire: Dynamic bullets based on fire level
+            // Fire level 1: 3 bullets, level 2: 4 bullets, level 3-5: 5 bullets (max)
+            const bulletCount = Math.min(this.fireLevel + 2, 5); // 3-5 bullets based on fire level
+            const totalSpread = 40; // Total spread angle in degrees
+            const angleStep = bulletCount > 1 ? totalSpread / (bulletCount - 1) : 0; // Calculate angle between bullets
+
+            for (let i = 0; i < bulletCount; i++) {
+                const angle = bulletCount > 1 ? -totalSpread / 2 + i * angleStep : 0; // Distribute bullets evenly
                 const bullet = this.bullets.get(this.player.x, this.player.y - 30);
                 if (bullet) {
                     bullet.setActive(true);
@@ -643,7 +696,7 @@ export default class MainScene extends Phaser.Scene {
                     vec.rotate(Phaser.Math.DegToRad(angle));
                     bullet.setVelocity(vec.x, vec.y);
                 }
-            });
+            }
             // Play wave fire sound with slight variation
             this.audioManager.playWithPitchVariation('shoot', 0.9, 1.1);
         } else {
@@ -714,6 +767,8 @@ export default class MainScene extends Phaser.Scene {
             enemy.shootTimer = 0;
             // @ts-ignore
             enemy.moveTimer = 0;
+            // @ts-ignore
+            enemy.moveDirection = Phaser.Math.Between(0, 1) === 1 ? 1 : -1; // Random initial direction
 
             // Visual distinction for ring shot enemies
             // @ts-ignore
@@ -1190,10 +1245,10 @@ export default class MainScene extends Phaser.Scene {
     
     usePowerup(type: string) {
         if (!this.inventory[type] || this.inventory[type] <= 0) return;
-        
+
         this.inventory[type]--;
         this.updateInventoryUI();
-        
+
         // Apply Effect
         if (type === 'powerup_upgrade') {
             // Wave Fire Mode for 10 seconds
@@ -1201,9 +1256,24 @@ export default class MainScene extends Phaser.Scene {
             this.time.delayedCall(10000, () => {
                 this.isWaveFireActive = false;
             });
-            
+
             this.score += 50;
             this.scoreText.setText('Score: ' + this.score);
+
+            // Show wave fire activation message with bullet count
+            const waveBulletCount = this.fireLevel + 2; // 3-5 bullets based on fire level (1-3)
+            const waveText = this.add.text(this.scale.width / 2, 120, `波次射击已激活！${waveBulletCount}发子弹`, {
+                fontSize: '24px',
+                color: '#00ffff',
+                backgroundColor: '#000000',
+                padding: { x: 10, y: 5 }
+            }).setOrigin(0.5);
+            this.tweens.add({
+                targets: waveText,
+                alpha: { from: 1, to: 0 },
+                duration: 2000,
+                onComplete: () => waveText.destroy()
+            });
         } else if (type === 'powerup_strengthen') {
             // Heal
             this.playerHp = Math.min(this.playerHp + 30, this.maxHp);
