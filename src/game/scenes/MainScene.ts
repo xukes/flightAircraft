@@ -1082,6 +1082,82 @@ export default class MainScene extends Phaser.Scene {
         this.powerups.killAndHide(powerup);
         if (powerup.body) powerup.body.enable = false;
 
+        // Auto-use health powerup if player is not at full health
+        if (type === 'powerup_strengthen') {
+            // Check if player needs healing
+            if (this.playerHp < this.maxHp) {
+                // Auto-use the healing powerup immediately
+                this.playerHp = Math.min(this.playerHp + 30, this.maxHp);
+                this.updateHpBar();
+
+                // Show auto-use visual feedback
+                const autoUseText = this.add.text(this.player.x, this.player.y - 80, '自动回血 +30 HP', {
+                    fontSize: '16px',
+                    color: '#00ff00',
+                    backgroundColor: '#000000',
+                    padding: { x: 5, y: 3 }
+                }).setOrigin(0.5).setDepth(200);
+
+                this.tweens.add({
+                    targets: autoUseText,
+                    alpha: 0,
+                    y: autoUseText.y - 40,
+                    duration: 1500,
+                    onComplete: () => autoUseText.destroy()
+                });
+
+                // Also add to inventory if space available and player still needs more healing
+                if (this.playerHp < this.maxHp) {
+                    // Init if undefined
+                    if (this.inventory[type] === undefined) this.inventory[type] = 0;
+
+                    // Only add to inventory if space available (Max 5 per type)
+                    if (this.inventory[type] < 5) {
+                        this.inventory[type]++;
+                        this.updateInventoryUI();
+                    }
+                }
+            } else {
+                // Player is at full health, just add to inventory
+                // Init if undefined
+                if (this.inventory[type] === undefined) this.inventory[type] = 0;
+
+                // Only add to inventory if space available (Max 5 per type)
+                if (this.inventory[type] < 5) {
+                    this.inventory[type]++;
+                    this.updateInventoryUI();
+                } else {
+                    // Feedback for full stack
+                    const txt = this.add.text(this.player.x, this.player.y - 50, 'MAX!', { fontSize: '14px', color: '#ff0000' });
+                    this.tweens.add({
+                        targets: txt,
+                        y: txt.y - 30,
+                        alpha: 0,
+                        duration: 500,
+                        onComplete: () => txt.destroy()
+                    });
+                }
+
+                // Show full health notification
+                const fullHealthText = this.add.text(this.player.x, this.player.y - 80, '血量已满', {
+                    fontSize: '14px',
+                    color: '#ffff00',
+                    backgroundColor: '#000000',
+                    padding: { x: 5, y: 3 }
+                }).setOrigin(0.5).setDepth(200);
+
+                this.tweens.add({
+                    targets: fullHealthText,
+                    alpha: 0,
+                    y: fullHealthText.y - 30,
+                    duration: 1000,
+                    onComplete: () => fullHealthText.destroy()
+                });
+            }
+            return; // Skip the rest of the logic for healing items
+        }
+
+        // Handle other powerup types
         // Init if undefined
         if (this.inventory[type] === undefined) this.inventory[type] = 0;
 
