@@ -286,17 +286,46 @@ def create_explosion(frame_idx, total_frames=8):
                           
     return img
 
+def create_big_enemy():
+    # 128x128 Big Boss
+    img = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    c_main = '#8E44AD' # Purple
+    c_dark = '#5B2C6F'
+    c_detail = '#D2B4DE'
+    
+    # Large Delta Wing
+    draw.polygon([(64, 20), (10, 80), (10, 110), (64, 90)], fill=c_main, outline=c_dark) # Left
+    draw.polygon([(64, 20), (118, 80), (118, 110), (64, 90)], fill=c_main, outline=c_dark) # Right
+    
+    # Main Fuselage
+    draw.polygon([(64, 120), (40, 80), (40, 20), (54, 0), (74, 0), (88, 20), (88, 80)], fill=c_main, outline=c_dark)
+    
+    # Cockpit
+    draw.polygon([(54, 40), (74, 40), (64, 70)], fill='#ff0000', outline='#550000')
+    
+    # Engines
+    draw.rectangle([(30, 80), (50, 110)], fill=c_dark, outline=c_detail)
+    draw.rectangle([(78, 80), (98, 110)], fill=c_dark, outline=c_detail)
+    
+    # Engine Glow
+    draw.ellipse([(35, 105), (45, 115)], fill='#ff0000')
+    draw.ellipse([(83, 105), (93, 115)], fill='#ff0000')
+    
+    return img
+
 def main():
     # Create Sprite Sheet Canvas
     # Layout:
-    # Row 1: Player (64x64) | Bullet P (16x32) | Bullet E (20x20)
+    # Row 1: Player (64x64) | Bullet P (16x32) | Bullet E (20x20) | Laser (16x64)
     # Row 2: Powerups (3x 40x40)
     # Row 3: Enemies (6x 64x64)
-    # Row 4: Lightning VFX (64x256)
+    # Row 4: Lightning VFX (64x256) | Big Enemy (128x128)
     # Row 5: Explosion (8x 64x64)
     
-    sheet_w = 64 * 8 # Increased to fit 8 explosion frames
-    sheet_h = 64 + 40 + 64 + 20 + 260 + 80 # Added space for explosion
+    sheet_w = 64 * 8 
+    sheet_h = 64 + 40 + 64 + 20 + 260 + 80 + 128 # Added space just in case
     
     sheet = Image.new('RGBA', (sheet_w, sheet_h), (0,0,0,0))
     
@@ -336,7 +365,11 @@ def main():
     l_vfx = create_lightning_vfx()
     sheet.paste(l_vfx, (0, 200))
     
-    # 6. Explosion
+    # 6. Big Enemy (Placed to the right of Lightning)
+    big_enemy = create_big_enemy()
+    sheet.paste(big_enemy, (100, 200))
+    
+    # 7. Explosion
     y_exp = 460
     for i in range(8):
         exp = create_explosion(i)

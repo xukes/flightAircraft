@@ -65,7 +65,7 @@ export default class AudioManager {
     }
 
     // 播放音效
-    playSound(key: string, config?: Phaser.Sound.SoundConfig) {
+    playSound(key: string, config?: Phaser.Types.Sound.SoundConfig) {
         const sound = this.sounds.get(key);
         if (sound) {
             sound.play(config);
@@ -112,7 +112,7 @@ export default class AudioManager {
     setBGMVolume(volume: number) {
         this.bgmVolume = Phaser.Math.Clamp(volume, 0, 1);
         if (this.bgmMusic) {
-            this.bgmMusic.setVolume(this.bgmVolume * this.masterVolume);
+            (this.bgmMusic as any).setVolume(this.bgmVolume * this.masterVolume);
         }
     }
 
@@ -120,14 +120,14 @@ export default class AudioManager {
     private updateAllVolumes() {
         this.updateSFXVolumes();
         if (this.bgmMusic) {
-            this.bgmMusic.setVolume(this.bgmVolume * this.masterVolume);
+            (this.bgmMusic as any).setVolume(this.bgmVolume * this.masterVolume);
         }
     }
 
     // 更新音效音量
     private updateSFXVolumes() {
         this.sounds.forEach(sound => {
-            sound.setVolume(this.sfxVolume * this.masterVolume);
+            (sound as any).setVolume(this.sfxVolume * this.masterVolume);
         });
     }
 

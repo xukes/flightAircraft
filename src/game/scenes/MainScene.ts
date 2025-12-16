@@ -43,6 +43,9 @@ export default class MainScene extends Phaser.Scene {
     private isLightningActive: boolean = false;
     private isWaveFireActive: boolean = false;
 
+    private enemySpawnCount: number = 0;
+    private nextBigEnemySpawn: number = 0;
+
     private audioManager!: AudioManager;
     private laserSound!: Phaser.Sound.BaseSound | null;
     private laserLoopSound!: Phaser.Sound.BaseSound | null;
@@ -62,6 +65,8 @@ export default class MainScene extends Phaser.Scene {
 
     create() {
         this.createAnimations();
+        this.audioManager.create();
+        this.audioManager.playBGM();
         
         this.score = 0;
         this.playerHp = 100;
@@ -71,6 +76,9 @@ export default class MainScene extends Phaser.Scene {
             'powerup_strengthen': 0,
             'powerup_lightning': 0
         };
+        
+        this.enemySpawnCount = 0;
+        this.nextBigEnemySpawn = Phaser.Math.Between(15, 23);
 
         // Background (TileSprite for scrolling)
         // Using scale.width/height to ensure it covers the whole screen
@@ -96,7 +104,7 @@ export default class MainScene extends Phaser.Scene {
 
         this.enemyBullets = this.physics.add.group({
             classType: Phaser.Physics.Arcade.Sprite,
-            maxSize: 50,
+            maxSize: 200, // Increased from 50 to accommodate Big Enemy bullet rings
             runChildUpdate: true
         });
 
@@ -382,21 +390,46 @@ export default class MainScene extends Phaser.Scene {
                     this.updateEnemyHpBar(e);
                 }
 
-                // Enemy shooting
-                // Base: 1% (10/1000) per frame @ 60fps
-                // Rate: 0.01 * 60 = 0.6 shots/sec
-                // New: 0.0006 per ms * delta
-                // 0.0006 * 10000 = 6
-                if (Phaser.Math.Between(0, 10000) < 6 * delta) {
-                    this.fireEnemyBullet(e);
+                // Update HP Text (if exists, though we use bars now mostly? Code still has text logic)
+                if (e.hpText) {
+                    e.hpText.setPosition(e.x, e.y - (e.isBig ? 80 : 30));
+                    e.hpText.setText(parseFloat(e.hp.toFixed(1)).toString());
                 }
 
-                if (e.y > this.scale.height + 50) {
+                // Big Enemy Logic
+                if (e.isBig) {
+                    // Movement: Sway left/right
+                    // Use time to calculate sine wave velocity
+                    const time = this.time.now;
+                    e.setVelocityX(Math.sin(time / 1000) * 100);
+                    
+                    // Shooting: Ring of bullets
+                    e.shootTimer += delta;
+                    if (e.shootTimer > 2000) { // Fire every 2 seconds
+                        e.shootTimer = 0;
+                        this.fireBigEnemyRing(e);
+                    }
+                } else {
+                    // Normal Enemy shooting
+                    // Base: 1% (10/1000) per frame @ 60fps
+                    // Rate: 0.01 * 60 = 0.6 shots/sec
+                    // New: 0.0006 per ms * delta
+                    // 0.0006 * 10000 = 6
+                    if (Phaser.Math.Between(0, 10000) < 6 * delta) {
+                        this.fireEnemyBullet(e);
+                    }
+                }
+
+                if (e.y > this.scale.height + 100) {
                     this.enemies.killAndHide(e);
                     if (e.body) e.body.enable = false;
                     if (e.hpText) {
                         e.hpText.destroy();
                         e.hpText = null;
+                    }
+                    if (e.hpBar) {
+                        e.hpBar.destroy();
+                        e.hpBar = null;
                     }
                 }
             }
@@ -405,12 +438,41 @@ export default class MainScene extends Phaser.Scene {
 
         // Cleanup enemy bullets
         this.enemyBullets.children.each((b: any) => {
-            if (b.active && b.y > this.scale.height + 50) {
-                this.enemyBullets.killAndHide(b);
-                if (b.body) b.body.enable = false;
+            if (b.active) {
+                // Check bounds for all directions (since big enemy fires in a ring)
+                if (b.y > this.scale.height + 50 || b.y < -50 || b.x < -50 || b.x > this.scale.width + 50) {
+                    this.enemyBullets.killAndHide(b);
+                    if (b.body) b.body.enable = false;
+                }
             }
             return true;
         });
+    }
+
+    fireBigEnemyRing(enemy: any) {
+        const numBullets = 12;
+        const angleStep = 360 / numBullets;
+        
+        for (let i = 0; i < numBullets; i++) {
+            const angle = i * angleStep;
+            const bullet = this.enemyBullets.get(enemy.x, enemy.y);
+            
+            if (bullet) {
+                bullet.setActive(true);
+                bullet.setVisible(true);
+                if (bullet.body) {
+                    bullet.body.enable = true;
+                    bullet.body.reset(enemy.x, enemy.y);
+                }
+                bullet.setTexture('spritesheet', 'enemyBullet');
+                
+                // Calculate velocity vector
+                const vec = new Phaser.Math.Vector2(0, 200); // Speed 200
+                vec.rotate(Phaser.Math.DegToRad(angle));
+                bullet.setVelocity(vec.x, vec.y);
+            }
+        }
+        this.audioManager.playWithPitchVariation('enemyShoot', 0.5, 0.7); // Deeper sound
     }
 
     fireEnemyBullet(enemy: any) {
@@ -477,6 +539,15 @@ export default class MainScene extends Phaser.Scene {
     spawnEnemy() {
         if (this.isGameOver) return;
 
+        // Check for Big Enemy Spawn
+        this.enemySpawnCount++;
+        if (this.enemySpawnCount >= this.nextBigEnemySpawn) {
+            this.spawnBigEnemy();
+            this.enemySpawnCount = 0;
+            this.nextBigEnemySpawn = Phaser.Math.Between(15, 23);
+            return; // Skip normal spawn
+        }
+
         const x = Phaser.Math.Between(30, this.scale.width - 30);
         const enemy = this.enemies.get(x, -50);
         if (enemy) {
@@ -501,7 +572,18 @@ export default class MainScene extends Phaser.Scene {
             // @ts-ignore
             enemy.hp = 3.0; // Initialize with explicit float value
             // @ts-ignore
+            enemy.isBig = false; // Reset big flag for recycled enemies
+            // @ts-ignore
             enemy.maxHp = 3.0; // Store max HP for bar calculation
+
+            // Ensure no leftover HP text from big enemy state
+            // @ts-ignore
+            if (enemy.hpText) {
+                // @ts-ignore
+                enemy.hpText.destroy();
+                // @ts-ignore
+                enemy.hpText = null;
+            }
 
             // Create HP bar for enemy instead of text
             // @ts-ignore
@@ -509,6 +591,52 @@ export default class MainScene extends Phaser.Scene {
             // @ts-ignore
             enemy.hpBar = this.add.graphics();
             this.updateEnemyHpBar(enemy);
+        }
+    }
+
+    spawnBigEnemy() {
+        const x = this.scale.width / 2;
+        const enemy = this.enemies.get(x, -100);
+        if (enemy) {
+            enemy.setActive(true);
+            enemy.setVisible(true);
+            
+            if (enemy.body) {
+                enemy.body.enable = true;
+                enemy.body.reset(x, -100);
+                enemy.body.setSize(100, 80);
+                enemy.body.setOffset(14, 20);
+            }
+            
+            enemy.setTexture('spritesheet', 'enemy_big');
+            enemy.setFlipY(true); // Flip big enemy to face down (asset is drawn nose up)
+            
+            // Initial velocity down
+            enemy.setVelocityY(50);
+            enemy.setVelocityX(0);
+            
+            // @ts-ignore
+            enemy.hp = 50.0;
+            // @ts-ignore
+            enemy.maxHp = 50.0;
+            // @ts-ignore
+            enemy.isBig = true;
+            // @ts-ignore
+            enemy.shootTimer = 0;
+            
+            // Ensure no leftover HP bar from normal enemy state
+            // @ts-ignore
+            if (enemy.hpBar) {
+                // @ts-ignore
+                enemy.hpBar.destroy();
+                // @ts-ignore
+                enemy.hpBar = null;
+            }
+            
+            // @ts-ignore
+            if (enemy.hpText) enemy.hpText.destroy();
+            // @ts-ignore
+            enemy.hpText = this.add.text(x, -130, '50.0', { fontSize: '20px', color: '#ff00ff', fontStyle: 'bold' }).setOrigin(0.5);
         }
     }
 
@@ -568,11 +696,18 @@ export default class MainScene extends Phaser.Scene {
 
     destroyEnemy(enemy: any) {
         // Play explosion sound
-        this.audioManager.playSound('explosion');
+        if (enemy.isBig) {
+            this.audioManager.playSound('explosion', { rate: 0.5 }); // Deeper explosion sound
+        } else {
+            this.audioManager.playSound('explosion');
+        }
 
         // Play explosion
         const explosion = this.add.sprite(enemy.x, enemy.y, 'spritesheet', 'explosion_0');
         explosion.play('explode');
+        if (enemy.isBig) {
+            explosion.setScale(2); // Bigger explosion for big enemy
+        }
         explosion.once('animationcomplete', () => {
             explosion.destroy();
         });
@@ -586,14 +721,23 @@ export default class MainScene extends Phaser.Scene {
             // @ts-ignore
             enemy.hpBar = null;
         }
-        this.score += 10;
+        // @ts-ignore
+        if (enemy.hpText) {
+            // @ts-ignore
+            enemy.hpText.destroy();
+            // @ts-ignore
+            enemy.hpText = null;
+        }
+
+        const scorePoints = enemy.isBig ? 100 : 10;
+        this.score += scorePoints;
         this.scoreText.setText('Score: ' + this.score);
 
         // Collect Energy (10%)
         this.playerEnergy = Math.min(this.playerEnergy + 10, this.maxEnergy);
         this.updateEnergyBar();
 
-        if (Math.random() > 0.8) { // Increased drop rate for testing
+        if (Math.random() > (enemy.isBig ? 0.2 : 0.8)) { // High drop rate for big enemy
             this.spawnPowerup(enemy.x, enemy.y);
         }
     }
@@ -980,6 +1124,9 @@ export default class MainScene extends Phaser.Scene {
         // Lightning VFX (y=200)
         if (!sheet.has('lightning_vfx')) sheet.add('lightning_vfx', 0, 0, 200, 64, 256);
         
+        // Big Enemy: (100, 200) 128x128
+        if (!sheet.has('enemy_big')) sheet.add('enemy_big', 0, 100, 200, 128, 128);
+
         // Enemies (y=120)
         for(let i=0; i<6; i++) {
             if (!sheet.has(`enemy_${i}`)) sheet.add(`enemy_${i}`, 0, i * 70, 120, 64, 64);
