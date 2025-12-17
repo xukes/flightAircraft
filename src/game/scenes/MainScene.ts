@@ -215,10 +215,9 @@ export default class MainScene extends Phaser.Scene {
         // Initialize laser sounds
         try {
             this.laserSound = this.sound.add('laser', { volume: 0.5 });
-            this.laserLoopSound = this.sound.add('laser', {
+            this.laserLoopSound = this.sound.add('laser_loop', {
                 volume: 0.3,
-                loop: true,
-                rate: 0.8 // Slightly lower pitch for continuous effect
+                loop: true
             });
         } catch (error) {
             console.warn('Laser sounds could not be loaded, skipping...');
