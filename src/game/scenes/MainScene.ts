@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import AudioManager from '../managers/AudioManager';
+import { GPUEffects } from '../shaders';
 
 export default class MainScene extends Phaser.Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
@@ -37,6 +38,7 @@ export default class MainScene extends Phaser.Scene {
     private energyText!: Phaser.GameObjects.Text;
     private laser!: Phaser.Physics.Arcade.Sprite;
     private laserGraphics!: Phaser.GameObjects.Graphics;
+    private laserEffect!: any; // GPU-accelerated laser effect
     private isLaserActive: boolean = false;
 
     private lightningGroup!: Phaser.GameObjects.Group;
@@ -52,6 +54,8 @@ export default class MainScene extends Phaser.Scene {
     private audioManager!: AudioManager;
     private laserSound!: Phaser.Sound.BaseSound | null;
     private laserLoopSound!: Phaser.Sound.BaseSound | null;
+
+    private gpuEffects!: GPUEffects;
 
     constructor() {
         super('MainScene');
@@ -70,6 +74,9 @@ export default class MainScene extends Phaser.Scene {
         this.createAnimations();
         this.audioManager.create();
         this.audioManager.playBGM();
+
+        // Initialize GPU shader pipelines
+        this.initShaderPipelines();
         
         this.score = 0;
         this.playerHp = 100;
@@ -230,18 +237,30 @@ export default class MainScene extends Phaser.Scene {
             const topY = -50;
             const height = bottomY - topY;
             
-            // Draw Laser
+            // Draw Laser using GPU effects
             this.laserGraphics.clear();
-            
-            // Outer beam (Cyan)
-            const width = 8;
-            this.laserGraphics.fillStyle(0x00ffff, 0.6 + 0.2 * Math.sin(this.time.now / 50));
-            this.laserGraphics.fillRect(this.player.x - width / 2, topY, width, height);
-            
-            // Inner core (White)
-            const coreWidth = 4;
-            this.laserGraphics.fillStyle(0xffffff, 1);
-            this.laserGraphics.fillRect(this.player.x - coreWidth / 2, topY, coreWidth, height);
+
+            // Destroy existing laser effect if any
+            if (this.laserEffect) {
+                if (this.laserEffect.main) this.laserEffect.main.destroy();
+                if (this.laserEffect.glow) {
+                    if (this.laserEffect.glow.core) this.laserEffect.glow.core.destroy();
+                    if (this.laserEffect.glow.inner) this.laserEffect.glow.inner.destroy();
+                    if (this.laserEffect.glow.middle) this.laserEffect.glow.middle.destroy();
+                    if (this.laserEffect.glow.outer) this.laserEffect.glow.outer.destroy();
+                }
+                this.laserEffect = null;
+            }
+
+            // Create optimized GPU-accelerated laser effect with white core and blue glow
+            // Position the container at the center point, but the laser will extend from aircraft nose to top
+            this.laserEffect = this.gpuEffects.createLaserEffect(
+                this.player.x,
+                (topY + bottomY) / 2,
+                8, // Thicker laser to get 3.2px core (8 * 0.4 = 3.2px)
+                height,
+                0x00ffff
+            );
             
             // Sync Body Position
             if (this.laser.body) {
@@ -318,6 +337,31 @@ export default class MainScene extends Phaser.Scene {
                 this.laser.setActive(false);
                 if (this.laser.body) this.laser.body.enable = false;
 
+                // Clear laser graphics
+                this.laserGraphics.clear();
+
+                // Cleanup GPU laser effect when energy depletes
+                if (this.laserEffect) {
+                    if (this.laserEffect.main && this.laserEffect.main.destroy) {
+                        this.laserEffect.main.destroy();
+                    }
+                    if (this.laserEffect.glow) {
+                        if (this.laserEffect.glow.core && this.laserEffect.glow.core.destroy) {
+                            this.laserEffect.glow.core.destroy();
+                        }
+                        if (this.laserEffect.glow.inner && this.laserEffect.glow.inner.destroy) {
+                            this.laserEffect.glow.inner.destroy();
+                        }
+                        if (this.laserEffect.glow.middle && this.laserEffect.glow.middle.destroy) {
+                            this.laserEffect.glow.middle.destroy();
+                        }
+                        if (this.laserEffect.glow.outer && this.laserEffect.glow.outer.destroy) {
+                            this.laserEffect.glow.outer.destroy();
+                        }
+                    }
+                    this.laserEffect = null;
+                }
+
                 // Stop laser sounds when energy depletes
                 this.stopLaserSounds();
             }
@@ -330,42 +374,113 @@ export default class MainScene extends Phaser.Scene {
                 if (this.laser.body) this.laser.body.enable = false;
                 this.laserGraphics.clear();
 
+                // Cleanup GPU laser effect
+                if (this.laserEffect) {
+                    if (this.laserEffect.main && this.laserEffect.main.destroy) {
+                        this.laserEffect.main.destroy();
+                    }
+                    if (this.laserEffect.glow) {
+                        if (this.laserEffect.glow.core && this.laserEffect.glow.core.destroy) {
+                            this.laserEffect.glow.core.destroy();
+                        }
+                        if (this.laserEffect.glow.inner && this.laserEffect.glow.inner.destroy) {
+                            this.laserEffect.glow.inner.destroy();
+                        }
+                        if (this.laserEffect.glow.middle && this.laserEffect.glow.middle.destroy) {
+                            this.laserEffect.glow.middle.destroy();
+                        }
+                        if (this.laserEffect.glow.outer && this.laserEffect.glow.outer.destroy) {
+                            this.laserEffect.glow.outer.destroy();
+                        }
+                    }
+                    this.laserEffect = null;
+                }
+
                 // Stop laser sounds
                 this.stopLaserSounds();
             }
         }
         
-        // Lightning Effect Animation
+        // Lightning Effect Animation (GPU-accelerated)
         if (this.isLightningActive) {
-            // Randomly spawn lightning bolts
-            // Adjust probability based on delta to maintain rate
-            // Base: 3/10 chance per frame @ 60fps
-            // Rate ~= 0.3 * 60 = 18 bolts/sec (very high?)
-            // Let's normalize. 
-            // Chance P per ms. 
-            // If delta is 33ms (30fps), chance should be higher.
-            
-            // Let's just use a time accumulator or simple delta scaling
-            // 30% chance per 16ms frame -> ~1.8% chance per ms
-            if (Phaser.Math.Between(0, 1000) < 18 * delta) {
-                const x = Phaser.Math.Between(0, this.scale.width);
-                const y = Phaser.Math.Between(0, this.scale.height);
-                const bolt = this.lightningGroup.get(x, y);
-                if (bolt) {
-                    bolt.setActive(true);
-                    bolt.setVisible(true);
-                    bolt.setDepth(50);
-                    bolt.setScale(Phaser.Math.FloatBetween(1, 2));
-                    bolt.setAlpha(1);
-                    
-                    this.tweens.add({
-                        targets: bolt,
-                        alpha: 0,
-                        duration: 200,
-                        onComplete: () => {
-                            this.lightningGroup.killAndHide(bolt);
-                        }
-                    });
+            // Create random lightning bolts using GPU effects
+            // Reduced frequency for better distribution: 15% chance per frame
+            if (Phaser.Math.Between(0, 1000) < 15 * delta) {
+                // Create multiple lightning bolts at once for better coverage
+                const boltCount = Math.floor(Math.random() * 3) + 1; // 1-3 bolts
+
+                for (let i = 0; i < boltCount; i++) {
+                    // Create more varied lightning patterns
+                    const pattern = Math.floor(Math.random() * 6); // 6 patterns now
+                    let startX = 0, startY = 0, endX = 0, endY = 0;
+
+                    switch (pattern) {
+                        case 0: // Top to bottom (with outside margin)
+                            startX = Phaser.Math.Between(-50, this.scale.width + 50);
+                            startY = -50;
+                            endX = Phaser.Math.Between(-50, this.scale.width + 50);
+                            endY = this.scale.height + 50;
+                            break;
+                        case 1: // Side to side (with outside margin)
+                            startX = -50;
+                            startY = Phaser.Math.Between(-50, this.scale.height + 50);
+                            endX = this.scale.width + 50;
+                            endY = Phaser.Math.Between(-50, this.scale.height + 50);
+                            break;
+                        case 2: // Corner to corner
+                            startX = Math.random() > 0.5 ? -50 : this.scale.width + 50;
+                            startY = -50;
+                            endX = Math.random() > 0.5 ? -50 : this.scale.width + 50;
+                            endY = this.scale.height + 50;
+                            break;
+                        case 3: // Random to random (extended range)
+                            startX = Phaser.Math.Between(-100, this.scale.width + 100);
+                            startY = Phaser.Math.Between(-100, this.scale.height + 100);
+                            endX = Phaser.Math.Between(-100, this.scale.width + 100);
+                            endY = Phaser.Math.Between(-100, this.scale.height + 100);
+                            break;
+                        case 4: // From outside to inside
+                            const side = Math.floor(Math.random() * 4);
+                            switch (side) {
+                                case 0: // Top
+                                    startX = Phaser.Math.Between(0, this.scale.width);
+                                    startY = -50;
+                                    break;
+                                case 1: // Right
+                                    startX = this.scale.width + 50;
+                                    startY = Phaser.Math.Between(0, this.scale.height);
+                                    break;
+                                case 2: // Bottom
+                                    startX = Phaser.Math.Between(0, this.scale.width);
+                                    startY = this.scale.height + 50;
+                                    break;
+                                case 3: // Left
+                                    startX = -50;
+                                    startY = Phaser.Math.Between(0, this.scale.height);
+                                    break;
+                            }
+                            endX = Phaser.Math.Between(100, this.scale.width - 100);
+                            endY = Phaser.Math.Between(100, this.scale.height - 100);
+                            break;
+                        case 5: // Center burst
+                            const centerX = this.scale.width / 2 + (Math.random() - 0.5) * 200;
+                            const centerY = this.scale.height / 2 + (Math.random() - 0.5) * 200;
+                            startX = centerX;
+                            startY = centerY;
+                            const angle = Math.random() * Math.PI * 2;
+                            const distance = 200 + Math.random() * 300;
+                            endX = centerX + Math.cos(angle) * distance;
+                            endY = centerY + Math.sin(angle) * distance;
+                            break;
+                    }
+
+                    this.gpuEffects.createLightningEffect(
+                        startX,
+                        startY,
+                        endX,
+                        endY,
+                        0xffff00
+                    );
                 }
             }
         }
@@ -1303,12 +1418,12 @@ export default class MainScene extends Phaser.Scene {
 
         // Damage ticks: 0s, 1s, 2s (3 ticks)
         // Tick 1 (Immediate)
-        this.damageAllEnemies(1);
+        this.damageAllEnemiesWithLightning();
 
         // Tick 2
         this.time.delayedCall(1000, () => {
             if (this.isLightningActive) {
-                this.damageAllEnemies(1);
+                this.damageAllEnemiesWithLightning();
                 this.cameras.main.shake(100, 0.01);
                 // Play additional lightning sound for effect
                 this.audioManager.playWithPitchVariation('lightning', 0.8, 1.0);
@@ -1318,7 +1433,7 @@ export default class MainScene extends Phaser.Scene {
         // Tick 3
         this.time.delayedCall(2000, () => {
             if (this.isLightningActive) {
-                this.damageAllEnemies(1);
+                this.damageAllEnemiesWithLightning();
                 this.cameras.main.shake(100, 0.01);
                 // Play final lightning sound with lower pitch
                 this.audioManager.playWithPitchVariation('lightning', 0.6, 0.8);
@@ -1326,6 +1441,62 @@ export default class MainScene extends Phaser.Scene {
         });
     }
     
+    damageAllEnemiesWithLightning() {
+        // First, create random lightning bolts across the screen for visual effect
+        const boltCount = 5 + Math.floor(Math.random() * 5); // 5-9 random bolts
+        for (let i = 0; i < boltCount; i++) {
+            const startX = Phaser.Math.Between(0, this.scale.width);
+            const startY = 0;
+            const endX = Phaser.Math.Between(0, this.scale.width);
+            const endY = this.scale.height;
+
+            this.gpuEffects.createLightningEffect(
+                startX,
+                startY,
+                endX,
+                endY,
+                0xffff00
+            );
+        }
+
+        // Then, damage enemies with targeted lightning from player
+        this.enemies.children.each((e: any) => {
+            if (e.active) {
+                // Create GPU-accelerated lightning effect from player to enemy
+                this.gpuEffects.createLightningEffect(
+                    this.player.x,
+                    this.player.y - 20,
+                    e.x,
+                    e.y,
+                    0xffffff  // Use white for player-to-enemy lightning to distinguish
+                );
+
+                e.hp -= 1;
+                // Update HP bar
+                this.updateEnemyHpBar(e);
+
+                if (e.hp <= 0) {
+                    // Play explosion
+                    const explosion = this.add.sprite(e.x, e.y, 'spritesheet', 'explosion_0');
+                    explosion.play('explode');
+                    explosion.once('animationcomplete', () => {
+                        explosion.destroy();
+                    });
+
+                    this.enemies.killAndHide(e);
+                    if (e.body) e.body.enable = false;
+                    if (e.hpBar) {
+                        e.hpBar.destroy();
+                        e.hpBar = null;
+                    }
+                    this.score += 10;
+                }
+            }
+            return true;
+        });
+        this.scoreText.setText('Score: ' + this.score);
+    }
+
     damageAllEnemies(damage: number) {
         this.enemies.children.each((e: any) => {
             if (e.active) {
@@ -1498,9 +1669,44 @@ export default class MainScene extends Phaser.Scene {
 
         // Clear laser graphics
         this.laserGraphics.clear();
+
+        // Cleanup GPU effects
+        if (this.laserEffect) {
+            if (this.laserEffect.main) this.laserEffect.main.destroy();
+            if (this.laserEffect.glow) {
+                if (this.laserEffect.glow.core && this.laserEffect.glow.core.destroy) {
+                    this.laserEffect.glow.core.destroy();
+                }
+                if (this.laserEffect.glow.inner && this.laserEffect.glow.inner.destroy) {
+                    this.laserEffect.glow.inner.destroy();
+                }
+                if (this.laserEffect.glow.middle && this.laserEffect.glow.middle.destroy) {
+                    this.laserEffect.glow.middle.destroy();
+                }
+                if (this.laserEffect.glow.outer && this.laserEffect.glow.outer.destroy()) {
+                    this.laserEffect.glow.outer.destroy();
+                }
+            }
+            this.laserEffect = null;
+        }
+
+        if (this.gpuEffects) {
+            this.gpuEffects.destroy();
+        }
     }
 
-    
+    // Initialize GPU shader pipelines
+    initShaderPipelines() {
+        try {
+            // Initialize GPU effects system
+            this.gpuEffects = new GPUEffects(this);
+            console.log('GPU effects system initialized successfully');
+        } catch (error) {
+            console.warn('Failed to initialize GPU effects, falling back to CPU rendering:', error);
+        }
+    }
+
+
     // Add cleanup method to handle scene shutdown
     shutdown() {
         // Stop all sounds when scene is destroyed
