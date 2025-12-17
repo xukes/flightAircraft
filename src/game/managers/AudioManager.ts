@@ -3,7 +3,7 @@ export default class AudioManager {
     private sounds: Map<string, Phaser.Sound.BaseSound> = new Map();
     private masterVolume: number = 0.8;
     private sfxVolume: number = 0.7;
-    private bgmVolume: number = 0.5;
+    private bgmVolume: number = 0.15;
     private bgmMusic: Phaser.Sound.BaseSound | null = null;
 
     constructor(scene: Phaser.Scene) {
