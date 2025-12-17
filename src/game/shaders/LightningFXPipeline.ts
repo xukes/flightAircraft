@@ -1,5 +1,3 @@
-import { FX } from './FX';
-
 export class LightningFXPipeline {
     private scene: Phaser.Scene;
     private fxPipeline: any;
@@ -122,7 +120,7 @@ export class LightningFXPipeline {
     }
 
     // Update pipeline uniforms for animated effects
-    update(time: number) {
+    update(_time: number) {
         if (this.fxPipeline) {
             // Update any time-based effects here
         }

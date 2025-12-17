@@ -257,7 +257,7 @@ export default class MainScene extends Phaser.Scene {
             this.laserEffect = this.gpuEffects.createLaserEffect(
                 this.player.x,
                 (topY + bottomY) / 2,
-                8, // Thicker laser to get 3.2px core (8 * 0.4 = 3.2px)
+                20, // Thicker laser to get 3.2px core (8 * 0.4 = 3.2px)
                 height,
                 0x00ffff
             );

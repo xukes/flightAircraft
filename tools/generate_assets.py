@@ -11,35 +11,34 @@ def create_player():
     img = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # Blue Jet Style (Nose UP)
-    c_main = '#409EFF'
-    c_dark = '#2b85e4'
-    c_highlight = '#66b1ff'
-    c_glass = '#00ffff'
+    # Modern Stealth Fighter (Bottom-Left style) - Nose UP
+    c_body = '#2D3436' # Dark Grey
+    c_light = '#636E72' # Lighter Grey
+    c_glass = '#74B9FF' # Light Blue
+    c_accent = '#D63031' # Red
     
-    # Wings (Swept Back)
-    draw.polygon([(32, 20), (0, 50), (10, 55), (32, 40)], fill=c_main, outline=c_dark) # Left
-    draw.polygon([(32, 20), (64, 50), (54, 55), (32, 40)], fill=c_main, outline=c_dark) # Right
+    # Main Body / Fuselage
+    draw.polygon([(32, 0), (24, 15), (24, 50), (32, 60), (40, 50), (40, 15)], fill=c_body, outline=c_light)
     
-    # Rear Stabilizers
-    draw.polygon([(32, 45), (15, 60), (25, 60), (32, 50)], fill=c_dark) # Left
-    draw.polygon([(32, 45), (49, 60), (39, 60), (32, 50)], fill=c_dark) # Right
+    # Wings (Swept back)
+    # Root at ~25, Tip at ~45
+    draw.polygon([(24, 25), (2, 45), (2, 55), (24, 50)], fill=c_body, outline=c_light) # Left
+    draw.polygon([(40, 25), (62, 45), (62, 55), (40, 50)], fill=c_body, outline=c_light) # Right
     
-    # Fuselage Body
-    draw.ellipse([(24, 5), (40, 60)], fill=c_main, outline=c_dark)
+    # Rear Stabilizers (V-tail)
+    draw.polygon([(28, 50), (15, 62), (25, 62)], fill=c_body, outline=c_light)
+    draw.polygon([(36, 50), (49, 62), (39, 62)], fill=c_body, outline=c_light)
     
-    # Cockpit Glass
-    draw.ellipse([(28, 15), (36, 35)], fill=c_glass, outline='#00aaaa')
-    # Cockpit Glint
-    draw.line([(30, 20), (30, 25)], fill='white', width=2)
+    # Cockpit
+    draw.ellipse([(28, 10), (36, 25)], fill=c_glass, outline='#0984E3')
     
-    # Engine Vents
-    draw.rectangle([(26, 40), (28, 50)], fill='#111')
-    draw.rectangle([(36, 40), (38, 50)], fill='#111')
+    # Red Accents (Roundels on wings)
+    draw.ellipse([(10, 45), (16, 51)], fill=c_accent)
+    draw.ellipse([(48, 45), (54, 51)], fill=c_accent)
     
-    # Engine Flame
-    draw.polygon([(28, 60), (36, 60), (32, 64)], fill='#ff9900')
-    draw.polygon([(30, 60), (34, 60), (32, 63)], fill='#ffff00')
+    # Engine Glow
+    draw.polygon([(26, 60), (30, 60), (28, 64)], fill='#FF7675')
+    draw.polygon([(34, 60), (38, 60), (36, 64)], fill='#FF7675')
     
     return img
 
@@ -48,30 +47,30 @@ def create_enemy(color, type_idx):
     draw = ImageDraw.Draw(img)
     
     # Enemies face DOWN (Nose at y=64)
-    style = type_idx % 4
+    style = type_idx % 6
     
-    if style == 0: # Green Bomber Style (Twin Engine)
-        c_main = '#67C23A' # Green
-        c_dark = '#3e7523'
-        c_detail = '#254d15'
+    if style == 0: # Middle-Left Style (Standard Fighter) - Nose DOWN
+        c_body = '#2D3436'
+        c_outline = '#636E72'
+        c_glass = '#D63031' # Red cockpit for enemy
         
-        # Main Wings
-        # Straight wings to avoid confusion
-        draw.polygon([(32, 20), (4, 20), (4, 40), (32, 40)], fill=c_main, outline=c_dark) # Left
-        draw.polygon([(32, 20), (60, 20), (60, 40), (32, 40)], fill=c_main, outline=c_dark) # Right
+        # Wings (Swept Back)
+        # Root at 20, Tip at 10 (Swept back relative to nose at 64)
+        draw.polygon([(32, 25), (2, 15), (2, 30), (32, 45)], fill=c_body, outline=c_outline)
+        draw.polygon([(32, 25), (62, 15), (62, 30), (32, 45)], fill=c_body, outline=c_outline)
         
         # Fuselage
-        draw.rectangle([(26, 5), (38, 60)], fill=c_main, outline=c_dark)
-        
-        # Engines on wings
-        draw.ellipse([(10, 25), (20, 45)], fill=c_dark, outline=c_detail)
-        draw.ellipse([(44, 25), (54, 45)], fill=c_dark, outline=c_detail)
-        
-        # Cockpit
-        draw.rectangle([(28, 45), (36, 55)], fill='#ff0000', outline='#550000')
+        draw.ellipse([(26, 5), (38, 60)], fill=c_body, outline=c_outline)
         
         # Tail
-        draw.polygon([(26, 5), (15, 0), (49, 0), (38, 5)], fill=c_dark)
+        draw.polygon([(32, 10), (20, 0), (44, 0)], fill=c_body, outline=c_outline)
+        
+        # Cockpit
+        draw.ellipse([(28, 40), (36, 50)], fill=c_glass)
+        
+        # Engines
+        draw.ellipse([(10, 15), (18, 35)], fill='#111', outline=c_outline)
+        draw.ellipse([(46, 15), (54, 35)], fill='#111', outline=c_outline)
 
     elif style == 1: # Red Biplane Style
         c_main = '#F56C6C' # Red
@@ -120,22 +119,77 @@ def create_enemy(color, type_idx):
         # Tail
         draw.polygon([(32, 10), (15, 0), (49, 0)], fill=c_dark)
 
-    elif style == 3: # Blue Jet (Enemy version)
-        c_main = '#409EFF'
-        c_dark = '#2b85e4'
+    elif style == 3: # Top-Left Style (Canards + Forward Swept) - Nose DOWN
+        c_body = '#2D3436'
+        c_outline = '#B2BEC3'
+        c_accent = '#E17055' # Orange
         
-        # Wings (Swept Forward for enemy look)
-        draw.polygon([(32, 30), (6, 10), (16, 5), (32, 20)], fill=c_main, outline=c_dark)
-        draw.polygon([(32, 30), (58, 10), (48, 5), (32, 20)], fill=c_main, outline=c_dark)
+        # Canards (Front wings)
+        draw.polygon([(32, 45), (20, 50), (20, 55), (32, 55)], fill=c_body, outline=c_outline)
+        draw.polygon([(32, 45), (44, 50), (44, 55), (32, 55)], fill=c_body, outline=c_outline)
+        
+        # Main Wings (Swept Back)
+        # Root at 35, Tip at 20 (Closer to tail)
+        draw.polygon([(32, 35), (5, 20), (5, 30), (32, 50)], fill=c_body, outline=c_outline)
+        draw.polygon([(32, 35), (59, 20), (59, 30), (32, 50)], fill=c_body, outline=c_outline)
         
         # Fuselage
-        draw.polygon([(32, 64), (24, 40), (24, 10), (32, 0), (40, 10), (40, 40)], fill=c_main, outline=c_dark)
+        draw.rectangle([(28, 5), (36, 60)], fill=c_body, outline=c_outline)
+        
+        # Orange Stripes on wings
+        draw.line([(10, 25), (25, 32)], fill=c_accent, width=2)
+        draw.line([(39, 32), (54, 25)], fill=c_accent, width=2)
         
         # Cockpit
-        draw.ellipse([(28, 45), (36, 55)], fill='#ff0000', outline='#550000')
+        draw.ellipse([(29, 45), (35, 55)], fill='#D63031')
         
         # Tail
-        draw.polygon([(32, 10), (20, 0), (44, 0)], fill=c_dark)
+        draw.polygon([(32, 10), (20, 0), (44, 0)], fill=c_body, outline=c_outline)
+
+    elif style == 4: # Style based on Image2 (Stealth Fighter)
+        c_body = '#2D3436'
+        c_outline = '#7F8C8D'
+        c_glass = '#74B9FF'
+        
+        # Main Fuselage
+        draw.polygon([(32, 64), (26, 40), (26, 10), (38, 10), (38, 40)], fill=c_body, outline=c_outline)
+        
+        # Canards
+        draw.polygon([(26, 50), (15, 45), (15, 55)], fill=c_body, outline=c_outline)
+        draw.polygon([(38, 50), (49, 45), (49, 55)], fill=c_body, outline=c_outline)
+        
+        # Main Wings
+        draw.polygon([(26, 35), (5, 20), (5, 10), (26, 25)], fill=c_body, outline=c_outline)
+        draw.polygon([(38, 35), (59, 20), (59, 10), (38, 25)], fill=c_body, outline=c_outline)
+        
+        # Tail
+        draw.polygon([(28, 5), (15, 0), (25, 0)], fill=c_body, outline=c_outline)
+        draw.polygon([(36, 5), (49, 0), (39, 0)], fill=c_body, outline=c_outline)
+        
+        # Cockpit
+        draw.ellipse([(29, 45), (35, 55)], fill=c_glass)
+
+    elif style == 5: # Advanced Interceptor
+        c_main = '#16A085' # Teal
+        c_dark = '#0E6655'
+        c_accent = '#F1C40F' # Yellow
+        
+        # Main Body
+        draw.polygon([(32, 64), (24, 40), (24, 10), (40, 10), (40, 40)], fill=c_main, outline=c_dark)
+        
+        # Wings (Aggressive Delta)
+        draw.polygon([(24, 35), (2, 25), (2, 45), (24, 50)], fill=c_main, outline=c_dark)
+        draw.polygon([(40, 35), (62, 25), (62, 45), (40, 50)], fill=c_main, outline=c_dark)
+        
+        # Tail
+        draw.polygon([(32, 10), (20, 0), (44, 0)], fill=c_main, outline=c_dark)
+        
+        # Cockpit
+        draw.ellipse([(28, 40), (36, 50)], fill=c_accent)
+        
+        # Engine details
+        draw.rectangle([(26, 5), (30, 15)], fill='#333')
+        draw.rectangle([(34, 5), (38, 15)], fill='#333')
 
     return img
 

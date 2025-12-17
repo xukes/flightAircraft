@@ -1,14 +1,11 @@
 import * as Phaser from 'phaser';
-import { LightningFXPipeline } from './LightningFXPipeline';
 
 export class GPUEffects {
     private scene: Phaser.Scene;
     private activeEffects: Phaser.GameObjects.GameObject[] = [];
-    private lightningFXPipeline: LightningFXPipeline;
 
     constructor(scene: Phaser.Scene) {
         this.scene = scene;
-        this.lightningFXPipeline = new LightningFXPipeline(scene);
     }
 
     // Create GPU-accelerated laser effect with white core and blue glow
@@ -213,168 +210,6 @@ export class GPUEffects {
         return graphics;
     }
 
-    // Create GPU-accelerated lightning bolt using custom pipeline
-    private createGPULightningBolt(x: number, y: number, targetX: number, targetY: number, color: number, thickness: number, alpha: number): Phaser.GameObjects.Rectangle {
-        // Create a full-screen quad that will be rendered with the lightning shader
-        const distance = Math.sqrt(Math.pow(targetX - x, 2) + Math.pow(targetY - y, 2));
-        const centerX = (x + targetX) / 2;
-        const centerY = (y + targetY) / 2;
-
-        const lightningBolt = this.scene.add.rectangle(centerX, centerY, distance + 100, distance + 100, color, alpha);
-        lightningBolt.setOrigin(0.5, 0.5);
-
-        // Set custom pipeline if available, otherwise use basic rendering
-        if ((this.scene.renderer as any).pipelines && (this.scene.renderer as any).pipelines.has('LightningPipeline')) {
-            lightningBolt.setPipeline('LightningPipeline');
-
-            // Set shader uniforms
-            const pipeline = (this.scene.renderer as any).pipelines.get('LightningPipeline');
-            if (pipeline && pipeline.set1f) {
-                pipeline.set1f('uTime', performance.now() / 1000);
-                pipeline.set2f('uStartPoint', x, y);
-                pipeline.set2f('uEndPoint', targetX, targetY);
-                pipeline.set1f('uThickness', thickness);
-                pipeline.set1f('uIntensity', alpha);
-            }
-        }
-
-        return lightningBolt;
-    }
-
-    // Fallback CPU-based lightning effect
-    private createCPULightning(x: number, y: number, targetX: number, targetY: number, color: number = 0xffff00): Phaser.GameObjects.Graphics {
-        try {
-            // Create main lightning bolt path with zigzag pattern
-            const mainBoltGraphics = this.createLightningBolt(x, y, targetX, targetY, color, 6, 0.9);
-            mainBoltGraphics.setDepth(50);
-
-            // Create glow layer (thicker, more transparent bolt)
-            const glowGraphics = this.createLightningBolt(x, y, targetX, targetY, color, 12, 0.4);
-            glowGraphics.setDepth(49);
-
-            // Create random branches
-            const branches: Phaser.GameObjects.Graphics[] = [];
-            const branchCount = Math.floor(3 + Math.random() * 5);
-
-            for (let i = 0; i < branchCount; i++) {
-                const branchPos = Math.random();
-                const branchX = x + (targetX - x) * branchPos;
-                const branchY = y + (targetY - y) * branchPos;
-                const branchLength = 15 + Math.random() * 50;
-                const branchAngle = Math.atan2(targetY - y, targetX - x) + (Math.random() - 0.5) * Math.PI / 2;
-
-                const branchEndX = branchX + Math.cos(branchAngle) * branchLength;
-                const branchEndY = branchY + Math.sin(branchAngle) * branchLength;
-
-                const branchGraphics = this.createLightningBolt(
-                    branchX, branchY, branchEndX, branchEndY,
-                    color, Math.random() * 3 + 1, Math.random() * 0.5 + 0.3
-                );
-                branchGraphics.setDepth(48);
-                branches.push(branchGraphics);
-            }
-
-            // Add sparks
-            const sparks: Phaser.GameObjects.Graphics[] = [];
-            for (let i = 0; i < 8; i++) {
-                const sparkPos = Math.random();
-                const sparkX = x + (targetX - x) * sparkPos;
-                const sparkY = y + (targetY - y) * sparkPos;
-                const sparkSize = Math.random() * 8 + 2;
-
-                const sparkGraphics = this.scene.add.graphics();
-                sparkGraphics.fillStyle(color, Math.random() * 0.8 + 0.2);
-                sparkGraphics.fillCircle(sparkX + (Math.random() - 0.5) * 50,
-                                        sparkY + (Math.random() - 0.5) * 50,
-                                        sparkSize);
-                sparkGraphics.setDepth(47);
-                sparks.push(sparkGraphics);
-            }
-
-            // Animation
-            const allLightning = [mainBoltGraphics, glowGraphics, ...branches, ...sparks];
-
-            this.scene.tweens.add({
-                targets: allLightning,
-                alpha: { from: 1, to: 0 },
-                duration: 100 + Math.random() * 150,
-                ease: 'Sine.easeOut',
-                onComplete: () => {
-                    allLightning.forEach(obj => obj.destroy());
-                }
-            });
-
-            this.activeEffects.push(...allLightning);
-
-            return mainBoltGraphics;
-        } catch (error) {
-            console.warn('CPU lightning effect failed, using basic fallback:', error);
-            return this.createFallbackLightning(x, y, targetX, targetY, color);
-        }
-    }
-
-    // Create a single lightning bolt with zigzag pattern
-    private createLightningBolt(x: number, y: number, targetX: number, targetY: number, color: number, thickness: number, alpha: number): Phaser.GameObjects.Graphics {
-        const graphics = this.scene.add.graphics();
-        graphics.lineStyle(thickness, color, alpha);
-
-        // Calculate the main direction
-        const distance = Math.sqrt(Math.pow(targetX - x, 2) + Math.pow(targetY - y, 2));
-        const segments = Math.floor(distance / 30) + 2; // Divide into segments
-
-        // Generate zigzag path
-        const points: {x: number, y: number}[] = [];
-
-        for (let i = 0; i <= segments; i++) {
-            const t = i / segments;
-            let pointX = x + (targetX - x) * t;
-            let pointY = y + (targetY - y) * t;
-
-            // Add perpendicular offset for zigzag effect (except for start and end)
-            if (i > 0 && i < segments) {
-                const perpendicularAngle = Math.atan2(targetY - y, targetX - x) + Math.PI / 2;
-                const offset = (Math.random() - 0.5) * 40; // Random offset up to 20px
-                pointX += Math.cos(perpendicularAngle) * offset;
-                pointY += Math.sin(perpendicularAngle) * offset;
-            }
-
-            points.push({x: pointX, y: pointY});
-        }
-
-        // Draw the main bolt
-        graphics.beginPath();
-        graphics.moveTo(points[0].x, points[0].y);
-
-        for (let i = 1; i < points.length; i++) {
-            graphics.lineTo(points[i].x, points[i].y);
-        }
-
-        graphics.strokePath();
-
-        // Add some smaller detail lines for more realistic look
-        if (thickness > 3) {
-            graphics.lineStyle(thickness * 0.3, color, alpha * 0.7);
-
-            for (let i = 1; i < points.length - 1; i++) {
-                if (Math.random() > 0.6) { // 40% chance to add detail
-                    const midX = (points[i].x + points[i + 1].x) / 2;
-                    const midY = (points[i].y + points[i + 1].y) / 2;
-                    const detailOffset = (Math.random() - 0.5) * 15;
-                    const perpendicularAngle = Math.atan2(points[i + 1].y - points[i].y, points[i + 1].x - points[i].x) + Math.PI / 2;
-
-                    graphics.beginPath();
-                    graphics.moveTo(midX, midY);
-                    graphics.lineTo(
-                        midX + Math.cos(perpendicularAngle) * detailOffset,
-                        midY + Math.sin(perpendicularAngle) * detailOffset
-                    );
-                    graphics.strokePath();
-                }
-            }
-        }
-
-        return graphics;
-    }
 
     // Fallback CPU-based laser effect
     private createFallbackLaser(x: number, y: number, width: number, height: number, color: number) {
