@@ -281,7 +281,11 @@ export default class MainScene extends Phaser.Scene {
         // Update FPS
         this.fpsText.setText('FPS: ' + Math.round(this.game.loop.actualFps));
 
-        if (this.isGameOver) return;
+        if (this.isGameOver) {
+            // Game Over state: only update enemy movement and cleanup
+            this.updateGameOverState(delta);
+            return;
+        }
 
         // Scroll background (Time-based)
         // Previously 2px per frame @ 60fps = 120px/sec
@@ -675,6 +679,162 @@ export default class MainScene extends Phaser.Scene {
         });
     }
 
+    updateGameOverState(delta: number) {
+        // In game over state: continue all normal game logic except player control
+        // Background continues scrolling
+        this.background.tilePositionY -= 0.12 * delta;
+
+        // Continue all enemy update logic (movement, shooting, etc.)
+        this.enemies.children.each((e: any) => {
+            if (e.active) {
+                // Update HP bar position if it exists
+                if (e.hpBar) {
+                    this.updateEnemyHpBar(e);
+                }
+
+                // Big Enemy Logic
+                if (e.isBig) {
+                    // Movement: Sway left/right
+                    const time = this.time.now;
+                    e.setVelocityX(Math.sin(time / 1000) * 100);
+
+                    // Continue shooting logic
+                    e.shootTimer += delta;
+                    if (e.shootTimer > 2000) { // Fire every 2 seconds
+                        e.shootTimer = 0;
+                        this.fireBigEnemyRing(e);
+                    }
+                } else {
+                    // Small Enemy Movement Patterns
+                    e.moveTimer += delta;
+
+                    // Store movement direction state
+                    // @ts-ignore
+                    if (e.moveDirection === undefined) {
+                        // @ts-ignore
+                        e.moveDirection = 1;
+                    }
+
+                    // @ts-ignore
+                    switch (e.movePattern) {
+                        case 1: // Sine wave movement
+                            // @ts-ignore
+                            const sineWave = Math.sin(e.moveTimer / 500) * 2;
+                            let targetVelocityX = sineWave * 50;
+
+                            const enemyHalfWidth = e.width / 2 || 20;
+                            const leftBound = enemyHalfWidth + 10;
+                            const rightBound = this.scale.width - enemyHalfWidth - 10;
+
+                            if (e.x <= leftBound && e.moveDirection === -1) {
+                                // @ts-ignore
+                                e.moveDirection = 1;
+                                // @ts-ignore
+                                e.moveTimer = 250;
+                                e.x = leftBound + 1;
+                            } else if (e.x >= rightBound && e.moveDirection === 1) {
+                                // @ts-ignore
+                                e.moveDirection = -1;
+                                // @ts-ignore
+                                e.moveTimer = 750;
+                                e.x = rightBound - 1;
+                            }
+
+                            e.setVelocityX(targetVelocityX);
+                            break;
+                        case 2: // Horizontal sway
+                            const swayEnemyHalfWidth = e.width / 2 || 20;
+                            const swayLeftBound = swayEnemyHalfWidth + 10;
+                            const swayRightBound = this.scale.width - swayEnemyHalfWidth - 10;
+
+                            // @ts-ignore
+                            if (e.x <= swayLeftBound && e.moveDirection === -1) {
+                                // @ts-ignore
+                                e.moveDirection = 1;
+                                e.x = swayLeftBound + 1;
+                            } else if (e.x >= swayRightBound && e.moveDirection === 1) {
+                                // @ts-ignore
+                                e.moveDirection = -1;
+                                e.x = swayRightBound - 1;
+                            }
+
+                            // @ts-ignore
+                            const directionPhase = e.moveDirection === 1 ? 0 : Math.PI;
+                            // @ts-ignore
+                            const swayPhase = ((e.moveTimer % 2000) / 2000) * Math.PI * 2 + directionPhase;
+                            let targetSwayX = Math.sin(swayPhase) * 80;
+
+                            e.setVelocityX(targetSwayX);
+                            break;
+                        default: // 0: Straight movement
+                            e.setVelocityX(0);
+                            // @ts-ignore
+                            e.moveDirection = 1;
+                            break;
+                    }
+
+                    // Boundary enforcement
+                    const currentEnemyHalfWidth = e.width / 2 || 20;
+                    const minX = currentEnemyHalfWidth;
+                    const maxX = this.scale.width - currentEnemyHalfWidth;
+
+                    if (e.x < minX) {
+                        e.x = minX;
+                        // @ts-ignore
+                        e.moveDirection = 1;
+                    } else if (e.x > maxX) {
+                        e.x = maxX;
+                        // @ts-ignore
+                        e.moveDirection = -1;
+                    }
+
+                    // Continue shooting logic
+                    e.shootTimer += delta;
+
+                    // @ts-ignore
+                    if (e.hasRingShot) {
+                        // Ring shot pattern: fire every 3 seconds
+                        if (e.shootTimer > 3000) {
+                            e.shootTimer = 0;
+                            this.fireSmallEnemyRing(e);
+                        }
+                    } else {
+                        // Normal shooting pattern
+                        if (Phaser.Math.Between(0, 10000) < 6 * delta) {
+                            this.fireEnemyBullet(e);
+                        }
+                    }
+                }
+
+                // Clean up off-screen enemies
+                if (e.y > this.scale.height + 100) {
+                    this.enemies.killAndHide(e);
+                    if (e.body) e.body.enable = false;
+                    if (e.hpText) {
+                        e.hpText.destroy();
+                        e.hpText = null;
+                    }
+                    if (e.hpBar) {
+                        e.hpBar.destroy();
+                        e.hpBar = null;
+                    }
+                }
+            }
+            return true;
+        });
+
+        // Clean up enemy bullets
+        this.enemyBullets.children.each((b: any) => {
+            if (b.active) {
+                if (b.y > this.scale.height + 50 || b.y < -50 || b.x < -50 || b.x > this.scale.width + 50) {
+                    this.enemyBullets.killAndHide(b);
+                    if (b.body) b.body.enable = false;
+                }
+            }
+            return true;
+        });
+    }
+
     fireBigEnemyRing(enemy: any) {
         const numBullets = 12;
         const angleStep = 360 / numBullets;
@@ -783,7 +943,7 @@ export default class MainScene extends Phaser.Scene {
     }
 
     fireBullet() {
-        if (this.isGameOver) return;
+        if (this.isGameOver) return; // Stop player shooting after death
         if (this.isLaserActive) return;
 
         if (this.isWaveFireActive) {
@@ -840,7 +1000,7 @@ export default class MainScene extends Phaser.Scene {
     }
 
     spawnEnemy() {
-        if (this.isGameOver) return;
+        // Remove game over check - enemies can spawn even after player death
 
         // Check for Big Enemy Spawn
         this.enemySpawnCount++;
@@ -1556,7 +1716,15 @@ export default class MainScene extends Phaser.Scene {
 
     gameOver() {
         this.isGameOver = true;
-        this.physics.pause();
+        // Don't pause physics - let enemies continue moving
+        // this.physics.pause();
+
+        // Hide player instead of keeping it visible
+        this.player.setVisible(false);
+        this.player.setActive(false);
+        if (this.player.body) {
+            this.player.body.enable = false;
+        }
 
         // Stop background music
         this.audioManager.stopBGM();
@@ -1572,15 +1740,20 @@ export default class MainScene extends Phaser.Scene {
         this.isLightningActive = false;
         this.isWaveFireActive = false;
 
+        // Display GAME OVER text
         this.add.text(this.scale.width / 2, this.scale.height / 2, 'GAME OVER', {
             fontSize: '40px',
-            color: '#ff0000'
-        }).setOrigin(0.5);
+            color: '#ff0000',
+            backgroundColor: '#000000',
+            padding: { x: 20, y: 10 }
+        }).setOrigin(0.5).setDepth(200);
 
-        this.add.text(this.scale.width / 2, this.scale.height / 2 + 50, '请按空格重新开始', {
+        this.add.text(this.scale.width / 2, this.scale.height / 2 + 50, '按空格键继续', {
             fontSize: '20px',
-            color: '#ffffff'
-        }).setOrigin(0.5);
+            color: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0.5).setDepth(200);
 
         if (this.input.keyboard) {
             this.input.keyboard.once('keydown-SPACE', () => {
