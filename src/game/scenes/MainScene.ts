@@ -98,6 +98,13 @@ export default class MainScene extends Phaser.Scene {
         this.player = this.physics.add.sprite(this.scale.width / 2, this.scale.height - 100, 'spritesheet', 'player');
         this.player.setCollideWorldBounds(true);
         this.player.setDepth(10);
+        // Set fixed display size regardless of source image size
+        this.player.setDisplaySize(70, 120);
+
+        // Adjust hitbox to better match aircraft shape
+        // The hitbox is smaller than display size and positioned to focus on the body
+        this.player.setSize(30, 60);  // Narrower and shorter than visual
+        this.player.setOffset(20, 30);  // Position hitbox to center on aircraft body
         
         // Groups
         this.bullets = this.physics.add.group({
